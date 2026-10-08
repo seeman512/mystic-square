@@ -1,163 +1,235 @@
-# Домашнє завдання: REST API на Go
+# Mystic Square — Levels Project
 
-Ви реалізуєте REST API для **власної сутності** (ваш варіант). Усі варіанти мають **однаковий контракт**,
-тому правильність перевіряється автоматичними тестами. Ви пишете сервіс самі (з ШІ-помічником чи без),
-але маєте розуміти кожен рядок свого коду: це перевіряється на захисті.
+Mystic Square is a browser-based sliding-puzzle game built around the classic 15 puzzle. This repository contains **Release 1: the level service**—a REST API for creating, listing, retrieving, updating, and deleting level configurations. It uses the `levels` project variant only.
 
-## 1. Як почати
+The API is the current deliverable. The browser game, game-session state, persistence, and authentication are product goals, not features implemented in this release.
 
-1. Створіть свій репозиторій із цього шаблону (кнопка **Use this template** або посилання від викладача).
-2. Відкрийте файл `VARIANT` і запишіть назву **вашого варіанта** (див. таблицю нижче), наприклад `movies`.
-3. Запустіть `go test ./...`. Усі тести спочатку **червоні**, це нормально: ви рухаєтеся до зеленого.
-4. Реалізуйте `NewRouter()` у `internal/app/app.go` й усе, що потрібно для нього.
-5. Після кожного `git push` GitHub Actions запускає перевірку й показує бали на сторінці запуску (розділ *Summary*).
+## 1. Project overview
 
-> Тести звертаються до вашого API **лише** через `app.NewRouter() http.Handler`. Структуру решти коду, роутер
-> (`net/http`, `gin`, `chi`...) і бібліотеки обираєте ви. Файли `*_test.go`, `scripts/` і `.github/workflows/ci.yml`
-> **не змінюйте**: під час оцінювання використовуються оригінальні версії.
+Players solve a sliding puzzle by moving numbered tiles into the empty cell until the board is in its solved order. A level configures a puzzle's theme, objective, difficulty, board dimensions, and optional limits.
 
-## 2. Варіанти
+The product defines two roles:
 
-Кожна сутність має **4 обов'язкові рядкові поля**, **одне необов'язкове ціле** і **одне необов'язкове текстове** поле.
-Четверте обов'язкове поле є полем **фільтра**.
+| Role | Intended permissions |
+|---|---|
+| `admin` | Browse and play levels; create levels. |
+| `user` | Browse and play levels; cannot create levels. |
 
-| Варіант (`VARIANT`) | Ресурс у URL | Обов'язкові поля (4-те це фільтр) | Необов'язкове ціле | Необов'язковий текст |
-|---|---|---|---|---|
-| `books` | `books` | `title`, `isbn`, `author`, `category` | `published_year` | `description` |
-| `movies` | `movies` | `title`, `director`, `country`, `genre` | `release_year` | `synopsis` |
-| `tasks` | `tasks` | `title`, `assignee`, `project`, `status` | `priority` | `notes` |
-| `recipes` | `recipes` | `name`, `author`, `difficulty`, `cuisine` | `cook_minutes` | `instructions` |
-| `devices` | `devices` | `name`, `serial`, `manufacturer`, `type` | `warranty_months` | `comment` |
-| `courses` | `courses` | `title`, `teacher`, `level`, `subject` | `hours` | `program` |
-| `albums` | `albums` | `title`, `artist`, `label`, `genre` | `release_year` | `notes` |
-| `pets` | `pets` | `name`, `owner`, `breed`, `species` | `age` | `notes` |
+The server must enforce these permissions when authentication and authorization are added. Release 1 does **not** implement accounts, authentication, role checks, or a browser UI; its API currently allows level creation without authentication.
 
-Нижче в прикладах використано варіант `books`. Підставте своє.
+### Puzzle rules and player flow
 
-## 3. Контракт API
+- A board with `rows × columns` cells contains `rows × columns - 1` numbered tiles and one empty cell. A standard 15 puzzle uses a 4×4 board and tiles 1–15.
+- A legal move slides a tile horizontally or vertically adjacent to the empty cell into that cell. Diagonal moves are not allowed.
+- The solved arrangement orders the tiles from left to right and top to bottom, with the empty cell last.
+- A game session should start with a solvable arrangement and track the board, move count, and elapsed time separately from the level definition.
+- A player selects a level, starts a game, makes legal moves, and sees whether they solved the puzzle or reached an enabled time or move limit.
 
-Усі відповіді (крім `204`) мають `Content-Type: application/json`. Ключі JSON пишуться в `snake_case`.
+### Creating a level
 
-| Метод і шлях | Успіх | Помилки |
-|---|---|---|
-| `GET /health` | `200` `{"status":"ok"}` | |
-| `POST /api/v1/books` | `201` + створений ресурс | `422` |
-| `GET /api/v1/books` | `200` + масив | `400` (`invalid_pagination`) |
-| `GET /api/v1/books/{id}` | `200` + ресурс | `400` (`invalid_id`), `404` |
-| `PUT /api/v1/books/{id}` | `200` + збережений ресурс | `400`, `422`, `404` |
-| `DELETE /api/v1/books/{id}` | `204` без тіла | `400`, `404` |
+In the complete product, an admin enters the level's required details and optional description and move limit. The application validates the input, assigns system-managed identifiers and timestamps, and makes the level available to play. Users may play levels but must not create them through either the interface or API once role-based access is implemented.
 
-Невідомий маршрут дає `404`, непідтримуваний метод (наприклад `PATCH`) дає будь-який `4xx`.
+## 2. Level resource and fields
 
-### Ресурс
+The `levels` variant is defined by `internal/app/variants_test.go`. Its four required string fields, optional integer, and optional text field are:
+
+| Field | Type | Request requirement | Purpose |
+|---|---|---|---|
+| `title` | string | Required | Name shown in the level list and game. |
+| `theme` | string | Required | Setting or theme, such as a forest or space station. |
+| `objective` | string | Required | What the player must accomplish. |
+| `difficulty` | string | Required | Difficulty label; this is also the list-filter field. The project defines `low`, `medium`, or `hard` as its difficulty values. Release 1 currently checks that this field is not blank but does not enforce the enum. |
+| `move_limit` | integer | Optional | Maximum permitted moves; `-1` means unlimited. |
+| `description` | string | Optional | Additional details or instructions. |
+
+Required strings must be present and must not be blank. The optional fields may be omitted; in API responses they remain present as `null` when unset. When supplied, `move_limit` must be an integer, not a fractional number or another JSON type.
+
+The puzzle domain also has these configuration and system-managed fields:
+
+| Field | Type | Request behavior | Purpose |
+|---|---|---|---|
+| `columns` | integer | Optional; defaults to `4` | Number of board columns. Values from 2 through 100 are accepted. |
+| `rows` | integer | Optional; defaults to `4` | Number of board rows. Values from 2 through 100 are accepted. |
+| `time_limit` | integer | Optional; omitted means unlimited | Allowed play time in seconds; `-1` means unlimited. Values from `-1` through `3600` are accepted. |
+| `id` | integer | Assigned by the service | Positive, monotonically increasing resource identifier. IDs are not reused after deletion. |
+| `created_at` | timestamp | Assigned by the service | Creation time in RFC 3339 format. |
+| `updated_at` | timestamp | Assigned by the service | Creation time, refreshed when the resource is updated. |
+
+`move_limit` may be from `-1` through `10000`; only `-1` means unlimited, while `0` is a configured limit. `time_limit` follows the same unlimited convention. An omitted limit is represented as `null` in the resource, and is treated as unlimited by the level model.
+
+A level response has this shape (timestamps and ID are examples):
 
 ```json
 {
   "id": 1,
-  "title": "The Go Programming Language",
-  "isbn": "9780134190440",
-  "author": "Donovan, Kernighan",
-  "category": "programming",
-  "published_year": 2015,
-  "description": null,
+  "title": "Forest Gate",
+  "theme": "forest",
+  "objective": "Find the hidden path",
+  "difficulty": "medium",
+  "move_limit": 100,
+  "description": "Arrange the tiles to open the gate.",
+  "columns": 4,
+  "rows": 4,
+  "time_limit": null,
   "created_at": "2026-10-05T12:00:00.123456Z",
   "updated_at": "2026-10-05T12:00:00.123456Z"
 }
 ```
 
-- `id`: додатне ціле, починається з `1`, зростає на 1, **ніколи не використовується повторно** після видалення.
-- Необов'язкові поля **завжди присутні** у відповіді, `null`, якщо не були задані.
-- `created_at` і `updated_at`: час у форматі RFC 3339. Створення виставляє обидва. `PUT` змінює лише `updated_at`.
+The board dimensions and `time_limit` are additional level settings; the variant's four required strings and two optional fields above define the required/optional variant contract. Runtime tile arrangement, elapsed time, and moves made belong to a game session, not to this level resource.
 
-### Валідація (`422`, код `validation_error`)
+## 3. How to run and test
 
-- Обов'язкове поле відсутнє, `null`, не рядок, порожнє або складається лише з пробілів.
-- Необов'язкове поле має хибний тип (рядок замість числа, дробове число замість цілого, число замість тексту).
-- Тіло запиту не є коректним JSON-об'єктом (зіпсований JSON, порожнє тіло, масив).
+Use Go 1.27.1. Start the HTTP API from the repository root:
 
-### Ідентифікатор
+```bash
+go run ./cmd/api
+```
 
-`{id}` має бути цілим числом від `0` до `4294967295` (`uint32`). Інакше (`abc`, `-1`, `1.5`, завелике число)
-це `400` з кодом `invalid_id`. Коректний, але неіснуючий `id` це `404` з кодом `not_found`.
-Для `PUT` порядок перевірок такий: **спочатку `id` (400), потім тіло (422), потім існування (404)**.
+The server listens on port `8080` by default. Set `PORT` to use another port:
 
-### `PUT`: повна заміна
+```bash
+PORT=9090 go run ./cmd/api
+```
 
-Тіло такого ж формату, як при створенні. Обов'язкові поля замінюються, **необов'язкові, яких немає в тілі, стають
-`null`**. Відповідь містить збережений ресурс (з тим самим `id` і `created_at`). Запит, відхилений валідацією,
-нічого не змінює.
+Run the complete test suite, including the race detector:
 
-### Список
+```bash
+go test ./...
+go test -race ./...
+```
 
-`GET /api/v1/books?page=1&limit=10&category=programming`
+Run a single API test stage:
 
-- Порожня колекція повертається як `[]`, а не `null`.
-- Порядок: за `id` за зростанням, **завжди однаковий**.
-- `page` (за замовчуванням `1`) і `limit` (за замовчуванням `10`) мають бути цілими числами `>= 1`, інакше
-  `400` з кодом `invalid_pagination`. Якщо `limit > 100`, використовується `100`. Сторінка за межами даних дає `[]`.
-- Фільтр: параметр запиту має **ту саму назву, що й четверте обов'язкове поле** (`category`, `genre`, `status`...).
-  Збіг точний і чутливий до регістру. Порожнє значення (`?category=`) означає «без фільтра».
-  Фільтр працює разом із пагінацією.
-- Дуже великі значення (`page=9223372036854775807`) не повинні призводити до паніки чи `500`.
+```bash
+go test ./internal/app -run TestStage2 -v
+```
 
-### Формат помилки
+The staged API tests cover the health route and resource operations, validation and errors, updates and deletion, listing and filtering, then CORS and concurrent access.
+
+## 4. REST API contract
+
+All successful responses except `204 No Content` and all error responses use JSON. JSON field names use `snake_case`.
+
+| Method and path | Success | Common errors |
+|---|---|---|
+| `GET /health` | `200` — `{"status":"ok"}` | — |
+| `POST /api/v1/levels` | `201` — created level | `422` validation error |
+| `GET /api/v1/levels` | `200` — array of levels | `400` invalid pagination |
+| `GET /api/v1/levels/{id}` | `200` — level | `400` invalid ID, `404` not found |
+| `PUT /api/v1/levels/{id}` | `200` — updated level | `400` invalid ID, `422` validation error, `404` not found |
+| `DELETE /api/v1/levels/{id}` | `204` — empty body | `400` invalid ID, `404` not found |
+
+Unknown routes return `404`; unsupported methods are rejected with a client error (`4xx`).
+
+### Create a level
+
+```bash
+curl -i -X POST http://localhost:8080/api/v1/levels \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title": "Forest Gate",
+    "theme": "forest",
+    "objective": "Find the hidden path",
+    "difficulty": "medium",
+    "move_limit": 100,
+    "description": "Arrange the tiles to open the gate.",
+    "columns": 4,
+    "rows": 4,
+    "time_limit": 300
+  }'
+```
+
+### Get and list levels
+
+```bash
+curl http://localhost:8080/api/v1/levels/1
+curl 'http://localhost:8080/api/v1/levels?page=1&limit=10&difficulty=medium'
+```
+
+### Update and delete a level
+
+`PUT` replaces the resource. It uses the same input shape as `POST`; omitted optional fields are cleared and returned as `null`. The ID and `created_at` remain unchanged, while `updated_at` is refreshed. The API validates the ID first, then the body, then checks whether the level exists. An invalid request does not update stored data.
+
+```bash
+curl -i -X PUT http://localhost:8080/api/v1/levels/1 \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title": "Forest Gate — Revised",
+    "theme": "forest",
+    "objective": "Find the hidden path",
+    "difficulty": "hard"
+  }'
+
+curl -i -X DELETE http://localhost:8080/api/v1/levels/1
+```
+
+### Validation and errors
+
+A request with a missing, `null`, non-string, empty, or whitespace-only required field is rejected with `422`. A malformed or empty body, a JSON array instead of an object, or an optional field with an invalid type is also rejected with `422`. Validation errors can include field-specific details.
+
+IDs in paths must be positive decimal integers. Invalid IDs return `400` with code `invalid_id`; valid but unknown IDs return `404` with code `not_found`.
+
+List query parameters:
+
+- `page` defaults to `1`; `limit` defaults to `10`.
+- Both must be positive integers. Invalid values return `400` with code `invalid_pagination`.
+- A `limit` greater than `100` is treated as `100`. Pages beyond the end return an empty array.
+- Results are ordered by ascending ID. An empty collection is `[]`, not `null`.
+- `difficulty` filters by exact, case-sensitive match. An empty filter value means no filter. Filtering is applied before pagination.
+
+Errors use this general shape and do not expose internal details:
 
 ```json
-{ "error": { "code": "not_found", "message": "Book not found" } }
+{
+  "error": {
+    "code": "not_found",
+    "message": "level not found"
+  }
+}
 ```
 
-Коди: `invalid_id`, `invalid_pagination`, `validation_error`, `not_found`, `internal_server_error`.
-`message` це непорожній рядок. Відповідь **не повинна розкривати внутрішні деталі** (текст паніки, stack trace,
-імена файлів). Паніка в обробнику перетворюється на `500` з кодом `internal_server_error`, а подробиці йдуть у лог.
+The API uses codes including `invalid_id`, `invalid_pagination`, `validation_error`, `not_found`, and `internal_server_error`. A recovered panic becomes a generic `500` response; panic details are logged rather than returned to the client.
 
-### CORS, конкурентність, стан
+### CORS, concurrency, and storage
 
-- Кожна відповідь має заголовок `Access-Control-Allow-Origin`. Запит `OPTIONS` дає `204` із
-  `Access-Control-Allow-Methods` (зі списком методів, зокрема `POST`).
-- Сервіс безпечний для паралельних запитів (перевіряється з `go test -race`).
-- Кожен виклик `NewRouter()` створює **нове порожнє сховище** (без глобальних змінних зі станом).
+- Responses include `Access-Control-Allow-Origin`. An `OPTIONS` preflight returns `204` and advertises supported methods, including `POST`.
+- The in-memory repository is safe for concurrent requests.
+- Each call to `app.NewRouter()` gets a new, empty repository; resources are not shared between router instances and are lost when the process exits.
 
-## 4. Етапи (рекомендований порядок)
+## 5. Implementation
 
-| Етап | Тести | Що робимо |
-|---|---|---|
-| 1 | `TestStage1_*` | каркас, `/health`, створення й отримання одного ресурсу |
-| 2 | `TestStage2_*` | валідація й помилки (`400`, `404`, `422`) |
-| 3 | `TestStage3_*` | `PUT`, `DELETE`, ідентифікатори, час |
-| 4 | `TestStage4_*` | список, сортування, пагінація, фільтр |
-| 5 | `TestStage5_*` | CORS і конкурентність |
+The current release separates responsibilities into layers:
 
-Запуск одного етапу: `go test ./internal/app -run TestStage2 -v`. Повна перевірка: `go test -race ./...`.
-Окрім видимих тестів, є **приховані** (граничні випадки з цього опису), які запускає викладач.
-
-## 5. Рекомендована структура
-
-```
-cmd/api/main.go              запуск сервера (готовий)
-internal/app/app.go          NewRouter(): збирає все докупи
-internal/model/              структури ресурсу і запитів
-internal/repository/         інтерфейс сховища + реалізація в пам'яті (з мʼютексом!)
-internal/handler/            HTTP-обробники
-internal/middleware/         логування, відновлення після паніки, CORS
+```text
+cmd/api/main.go              starts the HTTP server
+internal/app/app.go          builds and configures the router
+internal/model/              level types and validation
+internal/repository/         repository interface and in-memory implementation
+internal/service/            level business operations
+internal/handler/            HTTP endpoints and request/response handling
+internal/middleware/         recovery, request logging, and CORS
 ```
 
-Типові помилки, на які варто звернути увагу (їх регулярно допускає згенерований код): випадковий порядок
-елементів при обході `map`, повернення вказівників на внутрішні об'єкти сховища (гонка даних), `panic` при від'ємних
-межах зрізу в пагінації, відсутній час створення, відповідь `PUT` без `id`, розкриття тексту паніки клієнту.
+The router is exposed as `app.NewRouter() http.Handler`. The API uses Gin and a concurrency-safe in-memory store. Successful create and update responses return the level itself; errors use the JSON error envelope shown above.
 
-## 6. Оцінювання (100 балів)
+## 6. Development scope
 
-| Частина | Бали |
-|---|---|
-| Видимі автотести (етапи 1-5) | 40 |
-| Приховані автотести | 20 |
-| `gofmt` і `go vet` без зауважень | 5 |
-| Якість коду: шари, інтерфейс сховища, README, Swagger, історія комітів | 15 |
-| Захист (пояснити код, змінити вимогу наживо) | 20 |
+Release 1 provides:
 
-Автоматична перевірка у вашому репозиторії показує видимі тести та `gofmt`/`vet` (до 45 балів).
+- Level creation, retrieval, listing, replacement, and deletion over HTTP.
+- In-memory storage, generated IDs and timestamps, and level input validation.
+- Pagination, difficulty filtering, deterministic list order, and JSON error responses.
+- Recovery, request logging, CORS, and isolation between router instances.
 
-## 7. Здача
+The broader Mystic Square product specification also includes a browser-based puzzle, solvable board generation, game-session state, user accounts, and admin-only level creation. Those features are outside the current API release. A future persistent implementation will need to retain level IDs and timestamps across restarts and enforce the intended role permissions on the server.
 
-Репозиторій із коректним `VARIANT`, зеленим CI і короткою секцією в цьому README: як запустити, що реалізовано,
-які рішення ви прийняли. Дедлайн і форма захисту: за вказівкою викладача.
+## 7. Assignment workflow and submission
+
+1. Confirm that the root `VARIANT` file contains `levels`.
+2. Run `go test ./...` while implementing the service; use the staged tests to narrow down failures.
+3. Implement and explain the code behind `app.NewRouter()`. The tests exercise the API through this handler.
+4. Run `gofmt`, `go vet ./...`, and `go test ./...` before submission. Use `go test -race ./...` to check concurrent behavior.
+5. Submit the repository with passing checks and a short explanation of the implementation and design decisions. Be prepared to explain the code and make a small requirement change during review.
+
+The original assignment rubric allocates points to visible tests, hidden tests, formatting and vet checks, code quality, and the code review. Follow the deadline and review instructions provided by the instructor.
