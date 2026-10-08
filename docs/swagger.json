@@ -1,0 +1,469 @@
+{
+    "schemes": [
+        "http"
+    ],
+    "swagger": "2.0",
+    "info": {
+        "description": "HTTP API for managing Mystic Square puzzle levels.",
+        "title": "Mystic Square API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/api/v1",
+    "paths": {
+        "/levels": {
+            "get": {
+                "description": "Returns levels, optionally filtered by difficulty and paginated.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "levels"
+                ],
+                "summary": "List levels",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number, starting at 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Page size, capped at 100",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "low",
+                            "medium",
+                            "hard"
+                        ],
+                        "type": "string",
+                        "description": "Filter by difficulty",
+                        "name": "difficulty",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/model.Level"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid pagination parameters",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Creates a new puzzle level. Omitted grid dimensions default to 4x4.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "levels"
+                ],
+                "summary": "Create a level",
+                "parameters": [
+                    {
+                        "description": "Level payload",
+                        "name": "input",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.LevelInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/model.Level"
+                        }
+                    },
+                    "422": {
+                        "description": "Invalid level payload",
+                        "schema": {
+                            "$ref": "#/definitions/handler.levelErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/levels/{id}": {
+            "get": {
+                "description": "Returns the level with the given ID.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "levels"
+                ],
+                "summary": "Get a level",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Level ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Level"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid level ID",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Level not found",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Replaces the level with the given ID. Omitted grid dimensions default to 4x4.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "levels"
+                ],
+                "summary": "Replace a level",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Level ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Level payload",
+                        "name": "input",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.LevelInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Level"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid level ID",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Level not found",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Invalid level payload",
+                        "schema": {
+                            "$ref": "#/definitions/handler.levelErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Deletes the level with the given ID.",
+                "tags": [
+                    "levels"
+                ],
+                "summary": "Delete a level",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Level ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "400": {
+                        "description": "Invalid level ID",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Level not found",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "handler.levelAPIError": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.FieldError"
+                    }
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.levelErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "$ref": "#/definitions/handler.levelAPIError"
+                }
+            }
+        },
+        "model.APIError": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.Difficulty": {
+            "type": "string",
+            "enum": [
+                "low",
+                "medium",
+                "hard"
+            ],
+            "x-enum-varnames": [
+                "DifficultyLow",
+                "DifficultyMedium",
+                "DifficultyHard"
+            ]
+        },
+        "model.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "$ref": "#/definitions/model.APIError"
+                }
+            }
+        },
+        "model.FieldError": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.Level": {
+            "type": "object",
+            "properties": {
+                "columns": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 2,
+                    "example": 4
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string",
+                    "example": "A temple hidden in the jungle."
+                },
+                "difficulty": {
+                    "enum": [
+                        "low",
+                        "medium",
+                        "hard"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/model.Difficulty"
+                        }
+                    ],
+                    "example": "medium"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "move_limit": {
+                    "type": "integer",
+                    "maximum": 10000,
+                    "minimum": -1,
+                    "example": 50
+                },
+                "objective": {
+                    "description": "Objective describes what the player must accomplish to complete the level.",
+                    "type": "string",
+                    "example": "solve the puzzle"
+                },
+                "rows": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 2,
+                    "example": 4
+                },
+                "theme": {
+                    "description": "Theme describes the level's setting, such as a temple, forest, or space station.",
+                    "type": "string",
+                    "example": "temple"
+                },
+                "time_limit": {
+                    "type": "integer",
+                    "maximum": 3600,
+                    "minimum": -1,
+                    "example": 300
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Ancient Temple"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.LevelInput": {
+            "type": "object",
+            "properties": {
+                "columns": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 2,
+                    "example": 4
+                },
+                "description": {
+                    "type": "string",
+                    "example": "A temple hidden in the jungle."
+                },
+                "difficulty": {
+                    "enum": [
+                        "low",
+                        "medium",
+                        "hard"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/model.Difficulty"
+                        }
+                    ],
+                    "example": "medium"
+                },
+                "move_limit": {
+                    "type": "integer",
+                    "maximum": 10000,
+                    "minimum": -1,
+                    "example": 50
+                },
+                "objective": {
+                    "type": "string",
+                    "example": "solve the puzzle"
+                },
+                "rows": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 2,
+                    "example": 4
+                },
+                "theme": {
+                    "type": "string",
+                    "example": "temple"
+                },
+                "time_limit": {
+                    "type": "integer",
+                    "maximum": 3600,
+                    "minimum": -1,
+                    "example": 300
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Ancient Temple"
+                }
+            }
+        }
+    }
+}

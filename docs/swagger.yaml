@@ -1,0 +1,326 @@
+basePath: /api/v1
+definitions:
+  handler.levelAPIError:
+    properties:
+      code:
+        type: string
+      fields:
+        items:
+          $ref: '#/definitions/model.FieldError'
+        type: array
+      message:
+        type: string
+    type: object
+  handler.levelErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/handler.levelAPIError'
+    type: object
+  model.APIError:
+    properties:
+      code:
+        type: string
+      message:
+        type: string
+    type: object
+  model.Difficulty:
+    enum:
+    - low
+    - medium
+    - hard
+    type: string
+    x-enum-varnames:
+    - DifficultyLow
+    - DifficultyMedium
+    - DifficultyHard
+  model.ErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/model.APIError'
+    type: object
+  model.FieldError:
+    properties:
+      field:
+        type: string
+      message:
+        type: string
+    type: object
+  model.Level:
+    properties:
+      columns:
+        example: 4
+        maximum: 100
+        minimum: 2
+        type: integer
+      created_at:
+        type: string
+      description:
+        example: A temple hidden in the jungle.
+        type: string
+      difficulty:
+        allOf:
+        - $ref: '#/definitions/model.Difficulty'
+        enum:
+        - low
+        - medium
+        - hard
+        example: medium
+      id:
+        example: 1
+        type: integer
+      move_limit:
+        example: 50
+        maximum: 10000
+        minimum: -1
+        type: integer
+      objective:
+        description: Objective describes what the player must accomplish to complete
+          the level.
+        example: solve the puzzle
+        type: string
+      rows:
+        example: 4
+        maximum: 100
+        minimum: 2
+        type: integer
+      theme:
+        description: Theme describes the level's setting, such as a temple, forest,
+          or space station.
+        example: temple
+        type: string
+      time_limit:
+        example: 300
+        maximum: 3600
+        minimum: -1
+        type: integer
+      title:
+        example: Ancient Temple
+        type: string
+      updated_at:
+        type: string
+    type: object
+  model.LevelInput:
+    properties:
+      columns:
+        example: 4
+        maximum: 100
+        minimum: 2
+        type: integer
+      description:
+        example: A temple hidden in the jungle.
+        type: string
+      difficulty:
+        allOf:
+        - $ref: '#/definitions/model.Difficulty'
+        enum:
+        - low
+        - medium
+        - hard
+        example: medium
+      move_limit:
+        example: 50
+        maximum: 10000
+        minimum: -1
+        type: integer
+      objective:
+        example: solve the puzzle
+        type: string
+      rows:
+        example: 4
+        maximum: 100
+        minimum: 2
+        type: integer
+      theme:
+        example: temple
+        type: string
+      time_limit:
+        example: 300
+        maximum: 3600
+        minimum: -1
+        type: integer
+      title:
+        example: Ancient Temple
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: HTTP API for managing Mystic Square puzzle levels.
+  title: Mystic Square API
+  version: "1.0"
+paths:
+  /levels:
+    get:
+      description: Returns levels, optionally filtered by difficulty and paginated.
+      parameters:
+      - default: 1
+        description: Page number, starting at 1
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: Page size, capped at 100
+        in: query
+        name: limit
+        type: integer
+      - description: Filter by difficulty
+        enum:
+        - low
+        - medium
+        - hard
+        in: query
+        name: difficulty
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Level'
+            type: array
+        "400":
+          description: Invalid pagination parameters
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: List levels
+      tags:
+      - levels
+    post:
+      consumes:
+      - application/json
+      description: Creates a new puzzle level. Omitted grid dimensions default to
+        4x4.
+      parameters:
+      - description: Level payload
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/model.LevelInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Level'
+        "422":
+          description: Invalid level payload
+          schema:
+            $ref: '#/definitions/handler.levelErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: Create a level
+      tags:
+      - levels
+  /levels/{id}:
+    delete:
+      description: Deletes the level with the given ID.
+      parameters:
+      - description: Level ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No content
+        "400":
+          description: Invalid level ID
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "404":
+          description: Level not found
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: Delete a level
+      tags:
+      - levels
+    get:
+      description: Returns the level with the given ID.
+      parameters:
+      - description: Level ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Level'
+        "400":
+          description: Invalid level ID
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "404":
+          description: Level not found
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: Get a level
+      tags:
+      - levels
+    put:
+      consumes:
+      - application/json
+      description: Replaces the level with the given ID. Omitted grid dimensions default
+        to 4x4.
+      parameters:
+      - description: Level ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Level payload
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/model.LevelInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Level'
+        "400":
+          description: Invalid level ID
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "404":
+          description: Level not found
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "422":
+          description: Invalid level payload
+          schema:
+            $ref: '#/definitions/handler.levelErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: Replace a level
+      tags:
+      - levels
+schemes:
+- http
+swagger: "2.0"

@@ -24,18 +24,18 @@ const (
 
 // Level is a playable puzzle configuration.
 type Level struct {
-	ID    uint64 `json:"id"`
-	Title string `json:"title"`
+	ID    uint64 `json:"id" example:"1"`
+	Title string `json:"title" example:"Ancient Temple"`
 	// Theme describes the level's setting, such as a temple, forest, or space station.
-	Theme string `json:"theme"`
+	Theme string `json:"theme" example:"temple"`
 	// Objective describes what the player must accomplish to complete the level.
-	Objective   string     `json:"objective"`
-	Description *string    `json:"description"`
-	Difficulty  Difficulty `json:"difficulty"`
-	Columns     int        `json:"columns"`
-	Rows        int        `json:"rows"`
-	TimeLimit   *int       `json:"time_limit"`
-	MoveLimit   *int       `json:"move_limit"`
+	Objective   string     `json:"objective" example:"solve the puzzle"`
+	Description *string    `json:"description" example:"A temple hidden in the jungle."`
+	Difficulty  Difficulty `json:"difficulty" enums:"low,medium,hard" example:"medium"`
+	Columns     int        `json:"columns" minimum:"2" maximum:"100" example:"4"`
+	Rows        int        `json:"rows" minimum:"2" maximum:"100" example:"4"`
+	TimeLimit   *int       `json:"time_limit" minimum:"-1" maximum:"3600" example:"300"`
+	MoveLimit   *int       `json:"move_limit" minimum:"-1" maximum:"10000" example:"50"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
@@ -59,15 +59,15 @@ func (level Level) EffectiveMoveLimit() int {
 // LevelInput contains values supplied when creating or replacing a level.
 // Pointers let validation distinguish omitted values from valid zero values; dimensions and limits are optional.
 type LevelInput struct {
-	Title       *string     `json:"title"`
-	Theme       *string     `json:"theme"`
-	Objective   *string     `json:"objective"`
-	Description *string     `json:"description"`
-	Difficulty  *Difficulty `json:"difficulty"`
-	Columns     *int        `json:"columns"`
-	Rows        *int        `json:"rows"`
-	TimeLimit   *int        `json:"time_limit"`
-	MoveLimit   *int        `json:"move_limit"`
+	Title       *string     `json:"title" example:"Ancient Temple"`
+	Theme       *string     `json:"theme" example:"temple"`
+	Objective   *string     `json:"objective" example:"solve the puzzle"`
+	Description *string     `json:"description" example:"A temple hidden in the jungle."`
+	Difficulty  *Difficulty `json:"difficulty" enums:"low,medium,hard" example:"medium"`
+	Columns     *int        `json:"columns" minimum:"2" maximum:"100" example:"4"`
+	Rows        *int        `json:"rows" minimum:"2" maximum:"100" example:"4"`
+	TimeLimit   *int        `json:"time_limit" minimum:"-1" maximum:"3600" example:"300"`
+	MoveLimit   *int        `json:"move_limit" minimum:"-1" maximum:"10000" example:"50"`
 }
 
 // WithDefaults supplies omitted grid dimensions. Legacy requests that include both

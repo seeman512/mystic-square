@@ -38,6 +38,17 @@ func (h *LevelHandler) RegisterRoutes(router *gin.RouterGroup) {
 }
 
 // Create handles POST /levels.
+//
+// @Summary      Create a level
+// @Description  Creates a new puzzle level. Omitted grid dimensions default to 4x4.
+// @Tags         levels
+// @Accept       json
+// @Produce      json
+// @Param        input  body      model.LevelInput  true  "Level payload"
+// @Success      201    {object}  model.Level
+// @Failure      422    {object}  levelErrorResponse  "Invalid level payload"
+// @Failure      500    {object}  model.ErrorResponse
+// @Router       /levels [post]
 func (h *LevelHandler) Create(c *gin.Context) {
 	input, err := decodeLevelInput(c.Request.Body)
 	if err != nil {
@@ -54,6 +65,17 @@ func (h *LevelHandler) Create(c *gin.Context) {
 }
 
 // Get handles GET /levels/:id.
+//
+// @Summary      Get a level
+// @Description  Returns the level with the given ID.
+// @Tags         levels
+// @Produce      json
+// @Param        id   path      int  true  "Level ID"
+// @Success      200  {object}  model.Level
+// @Failure      400  {object}  model.ErrorResponse  "Invalid level ID"
+// @Failure      404  {object}  model.ErrorResponse  "Level not found"
+// @Failure      500  {object}  model.ErrorResponse
+// @Router       /levels/{id} [get]
 func (h *LevelHandler) Get(c *gin.Context) {
 	id, ok := parseID(c.Param("id"))
 	if !ok {
@@ -70,6 +92,18 @@ func (h *LevelHandler) Get(c *gin.Context) {
 }
 
 // List handles GET /levels. It supports optional page, limit and difficulty parameters.
+//
+// @Summary      List levels
+// @Description  Returns levels, optionally filtered by difficulty and paginated.
+// @Tags         levels
+// @Produce      json
+// @Param        page        query     int     false  "Page number, starting at 1"  default(1)
+// @Param        limit       query     int     false  "Page size, capped at 100"    default(10)
+// @Param        difficulty  query     string  false  "Filter by difficulty"        Enums(low, medium, hard)
+// @Success      200         {array}   model.Level
+// @Failure      400         {object}  model.ErrorResponse  "Invalid pagination parameters"
+// @Failure      500         {object}  model.ErrorResponse
+// @Router       /levels [get]
 func (h *LevelHandler) List(c *gin.Context) {
 	page, limit, ok := parsePagination(c)
 	if !ok {
@@ -102,6 +136,20 @@ func (h *LevelHandler) List(c *gin.Context) {
 }
 
 // Update handles PUT /levels/:id.
+//
+// @Summary      Replace a level
+// @Description  Replaces the level with the given ID. Omitted grid dimensions default to 4x4.
+// @Tags         levels
+// @Accept       json
+// @Produce      json
+// @Param        id     path      int               true  "Level ID"
+// @Param        input  body      model.LevelInput  true  "Level payload"
+// @Success      200    {object}  model.Level
+// @Failure      400    {object}  model.ErrorResponse  "Invalid level ID"
+// @Failure      404    {object}  model.ErrorResponse  "Level not found"
+// @Failure      422    {object}  levelErrorResponse  "Invalid level payload"
+// @Failure      500    {object}  model.ErrorResponse
+// @Router       /levels/{id} [put]
 func (h *LevelHandler) Update(c *gin.Context) {
 	id, ok := parseID(c.Param("id"))
 	if !ok {
@@ -124,6 +172,16 @@ func (h *LevelHandler) Update(c *gin.Context) {
 }
 
 // Delete handles DELETE /levels/:id.
+//
+// @Summary      Delete a level
+// @Description  Deletes the level with the given ID.
+// @Tags         levels
+// @Param        id   path  int  true  "Level ID"
+// @Success      204  "No content"
+// @Failure      400  {object}  model.ErrorResponse  "Invalid level ID"
+// @Failure      404  {object}  model.ErrorResponse  "Level not found"
+// @Failure      500  {object}  model.ErrorResponse
+// @Router       /levels/{id} [delete]
 func (h *LevelHandler) Delete(c *gin.Context) {
 	id, ok := parseID(c.Param("id"))
 	if !ok {
