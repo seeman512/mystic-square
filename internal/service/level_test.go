@@ -11,10 +11,14 @@ import (
 func TestLevelServiceCreateSetsTimestamps(t *testing.T) {
 	service := NewLevelService(repository.NewInMemoryLevelRepository())
 	title := "Starter"
+	theme := "forest"
+	objective := "find the exit"
 	difficulty := model.DifficultyMedium
 	rows, columns, timeLimit, moveLimit := 4, 4, -1, -1
 	level, err := service.Create(context.Background(), model.LevelInput{
 		Title:      &title,
+		Theme:      &theme,
+		Objective:  &objective,
 		Difficulty: &difficulty,
 		Rows:       &rows,
 		Columns:    &columns,

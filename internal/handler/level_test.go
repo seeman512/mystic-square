@@ -25,18 +25,16 @@ func TestLevelHandlerCreateValidationDetails(t *testing.T) {
 			body: "{}",
 			expectedFields: map[string]string{
 				"title":      "is required",
+				"theme":      "is required",
+				"objective":  "is required",
 				"difficulty": "is required",
-				"columns":    "is required",
-				"rows":       "is required",
-				"time_limit": "is required",
-				"move_limit": "is required",
 			},
 		},
 		{
 			name: "invalid fields",
-			body: `{"title":"Starter","difficulty":"easy","columns":101,"rows":1,"time_limit":3601,"move_limit":10001}`,
+			body: `{"title":"Starter","difficulty":" ","columns":101,"rows":1,"time_limit":3601,"move_limit":10001}`,
 			expectedFields: map[string]string{
-				"difficulty": "must be one of low, medium, or hard",
+				"difficulty": "must not be blank",
 				"columns":    "must be between 2 and 100",
 				"rows":       "must be between 2 and 100",
 				"time_limit": "must be between -1 and 3600",
@@ -90,6 +88,39 @@ func TestLevelHandlerCreateValidationDetails(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestLevelHandlerCreateDefaultsOmittedGridAndLimits(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	h := NewLevelHandler(service.NewLevelService(repository.NewInMemoryLevelRepository()))
+	h.RegisterRoutes(router.Group("/api/v1"))
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/levels",
+		strings.NewReader(`{"title":"Starter","theme":"forest","objective":"find the exit","difficulty":"low"}`),
+	)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", response.Code, response.Body)
+	}
+
+	var level map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &level); err != nil {
+		t.Fatalf("unmarshal created level: %v", err)
+	}
+	for _, field := range []string{"time_limit", "move_limit"} {
+		if value, exists := level[field]; !exists || value != nil {
+			t.Errorf("omitted %s = %v (present: %t), want null", field, value, exists)
+		}
+	}
+	for _, field := range []string{"rows", "columns"} {
+		if value, ok := level[field].(float64); !ok || value != 4 {
+			t.Errorf("default %s = %v, want 4", field, level[field])
+		}
 	}
 }
 

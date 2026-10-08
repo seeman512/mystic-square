@@ -134,5 +134,13 @@ func cloneLevel(level model.Level) model.Level {
 		description := *level.Description
 		level.Description = &description
 	}
+	if level.TimeLimit != nil {
+		timeLimit := *level.TimeLimit
+		level.TimeLimit = &timeLimit
+	}
+	if level.MoveLimit != nil {
+		moveLimit := *level.MoveLimit
+		level.MoveLimit = &moveLimit
+	}
 	return level
 }

@@ -34,6 +34,7 @@ func NewLevelService(repository repository.LevelRepository) *LevelServiceImpl {
 
 // Create validates and stores a new level.
 func (s *LevelServiceImpl) Create(ctx context.Context, input model.LevelInput) (model.Level, error) {
+	input = input.WithDefaults()
 	if err := input.Validate(); err != nil {
 		return model.Level{}, err
 	}
@@ -41,13 +42,16 @@ func (s *LevelServiceImpl) Create(ctx context.Context, input model.LevelInput) (
 	now := s.clock().UTC()
 	return s.repository.Create(ctx, model.Level{
 		Title:       *input.Title,
+		Theme:       *input.Theme,
+		Objective:   *input.Objective,
 		Description: input.Description,
 		Difficulty:  *input.Difficulty,
 		Columns:     *input.Columns,
 		Rows:        *input.Rows,
-		TimeLimit:   *input.TimeLimit,
-		MoveLimit:   *input.MoveLimit,
+		TimeLimit:   input.TimeLimit,
+		MoveLimit:   input.MoveLimit,
 		CreatedAt:   now,
+		UpdatedAt:   now,
 	})
 }
 
@@ -63,6 +67,7 @@ func (s *LevelServiceImpl) List(ctx context.Context) ([]model.Level, error) {
 
 // Update validates and replaces a level while retaining its identifier and creation time.
 func (s *LevelServiceImpl) Update(ctx context.Context, id uint64, input model.LevelInput) (model.Level, error) {
+	input = input.WithDefaults()
 	if err := input.Validate(); err != nil {
 		return model.Level{}, err
 	}
@@ -72,12 +77,15 @@ func (s *LevelServiceImpl) Update(ctx context.Context, id uint64, input model.Le
 		return model.Level{}, err
 	}
 	current.Title = *input.Title
+	current.Theme = *input.Theme
+	current.Objective = *input.Objective
 	current.Description = input.Description
 	current.Difficulty = *input.Difficulty
 	current.Columns = *input.Columns
 	current.Rows = *input.Rows
-	current.TimeLimit = *input.TimeLimit
-	current.MoveLimit = *input.MoveLimit
+	current.TimeLimit = input.TimeLimit
+	current.MoveLimit = input.MoveLimit
+	current.UpdatedAt = s.clock().UTC()
 	return s.repository.Update(ctx, current)
 }
 

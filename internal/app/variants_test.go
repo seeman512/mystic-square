@@ -31,6 +31,7 @@ var variants = []Variant{
 	{Name: "courses", Resource: "courses", Required: []string{"title", "teacher", "level", "subject"}, OptInt: "hours", OptText: "program"},
 	{Name: "albums", Resource: "albums", Required: []string{"title", "artist", "label", "genre"}, OptInt: "release_year", OptText: "notes"},
 	{Name: "pets", Resource: "pets", Required: []string{"name", "owner", "breed", "species"}, OptInt: "age", OptText: "notes"},
+	{Name: "levels", Resource: "levels", Required: []string{"title", "theme", "objective", "difficulty"}, OptInt: "move_limit", OptText: "description"},
 }
 
 // mustVariant returns the variant chosen in the VARIANT file at the repository root.

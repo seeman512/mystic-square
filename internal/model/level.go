@@ -15,29 +15,79 @@ const (
 	DifficultyHard   Difficulty = "hard"
 )
 
+const (
+	unlimitedLimit       = -1
+	defaultGridDimension = 4
+	legacyTheme          = "classic"
+	legacyObjective      = "solve the puzzle"
+)
+
 // Level is a playable puzzle configuration.
 type Level struct {
-	ID          uint64     `json:"id"`
-	Title       string     `json:"title"`
+	ID    uint64 `json:"id"`
+	Title string `json:"title"`
+	// Theme describes the level's setting, such as a temple, forest, or space station.
+	Theme string `json:"theme"`
+	// Objective describes what the player must accomplish to complete the level.
+	Objective   string     `json:"objective"`
 	Description *string    `json:"description"`
 	Difficulty  Difficulty `json:"difficulty"`
 	Columns     int        `json:"columns"`
 	Rows        int        `json:"rows"`
-	TimeLimit   int        `json:"time_limit"`
-	MoveLimit   int        `json:"move_limit"`
+	TimeLimit   *int       `json:"time_limit"`
+	MoveLimit   *int       `json:"move_limit"`
 	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+// EffectiveTimeLimit returns the configured time limit, or -1 when unlimited.
+func (level Level) EffectiveTimeLimit() int {
+	if level.TimeLimit == nil {
+		return unlimitedLimit
+	}
+	return *level.TimeLimit
+}
+
+// EffectiveMoveLimit returns the configured move limit, or -1 when unlimited.
+func (level Level) EffectiveMoveLimit() int {
+	if level.MoveLimit == nil {
+		return unlimitedLimit
+	}
+	return *level.MoveLimit
 }
 
 // LevelInput contains values supplied when creating or replacing a level.
-// Pointers on required fields let validation distinguish omitted values from valid zero values.
+// Pointers let validation distinguish omitted values from valid zero values; dimensions and limits are optional.
 type LevelInput struct {
 	Title       *string     `json:"title"`
+	Theme       *string     `json:"theme"`
+	Objective   *string     `json:"objective"`
 	Description *string     `json:"description"`
 	Difficulty  *Difficulty `json:"difficulty"`
 	Columns     *int        `json:"columns"`
 	Rows        *int        `json:"rows"`
 	TimeLimit   *int        `json:"time_limit"`
 	MoveLimit   *int        `json:"move_limit"`
+}
+
+// WithDefaults supplies omitted grid dimensions. Legacy requests that include both
+// dimensions but omit both new descriptive fields receive stable default values.
+func (input LevelInput) WithDefaults() LevelInput {
+	legacyRequest := input.Rows != nil && input.Columns != nil && input.Theme == nil && input.Objective == nil
+	if legacyRequest {
+		theme, objective := legacyTheme, legacyObjective
+		input.Theme = &theme
+		input.Objective = &objective
+	}
+	if input.Rows == nil {
+		rows := defaultGridDimension
+		input.Rows = &rows
+	}
+	if input.Columns == nil {
+		columns := defaultGridDimension
+		input.Columns = &columns
+	}
+	return input
 }
 
 // FieldError describes one invalid level field.
@@ -72,37 +122,32 @@ func (input LevelInput) Validate() error {
 		fields = append(fields, FieldError{Field: "title", Message: "must not be blank"})
 	}
 
+	if input.Theme == nil {
+		fields = append(fields, FieldError{Field: "theme", Message: "is required"})
+	} else if strings.TrimSpace(*input.Theme) == "" {
+		fields = append(fields, FieldError{Field: "theme", Message: "must not be blank"})
+	}
+	if input.Objective == nil {
+		fields = append(fields, FieldError{Field: "objective", Message: "is required"})
+	} else if strings.TrimSpace(*input.Objective) == "" {
+		fields = append(fields, FieldError{Field: "objective", Message: "must not be blank"})
+	}
 	if input.Difficulty == nil {
 		fields = append(fields, FieldError{Field: "difficulty", Message: "is required"})
-	} else {
-		switch *input.Difficulty {
-		case DifficultyLow, DifficultyMedium, DifficultyHard:
-		default:
-			fields = append(fields, FieldError{
-				Field:   "difficulty",
-				Message: "must be one of low, medium, or hard",
-			})
-		}
+	} else if strings.TrimSpace(string(*input.Difficulty)) == "" {
+		fields = append(fields, FieldError{Field: "difficulty", Message: "must not be blank"})
 	}
 
-	if input.Rows == nil {
-		fields = append(fields, FieldError{Field: "rows", Message: "is required"})
-	} else if *input.Rows < 2 || *input.Rows > 100 {
+	if input.Rows != nil && (*input.Rows < 2 || *input.Rows > 100) {
 		fields = append(fields, FieldError{Field: "rows", Message: "must be between 2 and 100"})
 	}
-	if input.Columns == nil {
-		fields = append(fields, FieldError{Field: "columns", Message: "is required"})
-	} else if *input.Columns < 2 || *input.Columns > 100 {
+	if input.Columns != nil && (*input.Columns < 2 || *input.Columns > 100) {
 		fields = append(fields, FieldError{Field: "columns", Message: "must be between 2 and 100"})
 	}
-	if input.TimeLimit == nil {
-		fields = append(fields, FieldError{Field: "time_limit", Message: "is required"})
-	} else if *input.TimeLimit < -1 || *input.TimeLimit > 3600 {
+	if input.TimeLimit != nil && (*input.TimeLimit < -1 || *input.TimeLimit > 3600) {
 		fields = append(fields, FieldError{Field: "time_limit", Message: "must be between -1 and 3600"})
 	}
-	if input.MoveLimit == nil {
-		fields = append(fields, FieldError{Field: "move_limit", Message: "is required"})
-	} else if *input.MoveLimit < -1 || *input.MoveLimit > 10000 {
+	if input.MoveLimit != nil && (*input.MoveLimit < -1 || *input.MoveLimit > 10000) {
 		fields = append(fields, FieldError{Field: "move_limit", Message: "must be between -1 and 10000"})
 	}
 
