@@ -1,21 +1,46 @@
-// Package app wires the whole HTTP API together.
-//
-// The automatic tests talk to your API ONLY through NewRouter(), so you are free to
-// organise the rest of the code (model, repository, handler, middleware) as you like.
+// Package app wires the HTTP API together.
 package app
 
-import "net/http"
+import (
+	"log/slog"
+	"net/http"
+	"os"
 
-// NewRouter must return a fully configured HTTP handler for your resource.
-//
-// Requirements (see README.md for the full contract):
-//   - every call returns a NEW router with its own EMPTY in-memory storage;
-//   - it must be safe for concurrent requests;
-//   - it can be built with net/http, gin, chi or any other router.
-//
-// TODO: replace this stub with your implementation.
+	"github.com/gin-gonic/gin"
+
+	"mystic-square/internal/handler"
+	"mystic-square/internal/middleware"
+	"mystic-square/internal/model"
+	"mystic-square/internal/repository"
+	"mystic-square/internal/service"
+)
+
+// NewRouter returns a fully configured HTTP handler with fresh in-memory storage.
 func NewRouter() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "not implemented", http.StatusNotImplemented)
+	levelRepository := repository.NewInMemoryLevelRepository()
+	levelService := service.NewLevelService(levelRepository)
+	levelHandler := handler.NewLevelHandler(levelService)
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+
+	router := gin.New()
+	router.Use(
+		middleware.Recovery(logger),
+		middleware.Logging(logger),
+		middleware.CORS(),
+	)
+
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	api := router.Group("/api/v1")
+	levelHandler.RegisterRoutes(api)
+
+	router.NoRoute(func(c *gin.Context) {
+		c.JSON(http.StatusNotFound, model.NewErrorResponse("not_found", "route not found"))
+	})
+	router.NoMethod(func(c *gin.Context) {
+		c.JSON(http.StatusMethodNotAllowed, model.NewErrorResponse("method_not_allowed", "method not allowed"))
+	})
+	return router
 }

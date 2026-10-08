@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"homework/internal/app"
+	"mystic-square/internal/app"
 )
 
 // env bundles a fresh router with the student's variant.

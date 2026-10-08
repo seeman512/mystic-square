@@ -5,13 +5,13 @@ import (
 	"net/http"
 	"os"
 
-	"homework/internal/app"
+	"mystic-square/internal/app"
 )
 
 func main() {
 	addr := ":8080"
-	if p := os.Getenv("PORT"); p != "" {
-		addr = ":" + p
+	if port := os.Getenv("PORT"); port != "" {
+		addr = ":" + port
 	}
 
 	log.Printf("listening on %s", addr)
