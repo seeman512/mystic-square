@@ -1,5 +1,12 @@
 basePath: /api/v1
 definitions:
+  handler.createGameRequest:
+    properties:
+      level_id:
+        type: integer
+      user_id:
+        type: integer
+    type: object
   handler.levelAPIError:
     properties:
       code:
@@ -15,6 +22,17 @@ definitions:
     properties:
       error:
         $ref: '#/definitions/handler.levelAPIError'
+    type: object
+  handler.moveRequest:
+    properties:
+      column:
+        type: integer
+      move:
+        items:
+          type: integer
+        type: array
+      row:
+        type: integer
     type: object
   model.APIError:
     properties:
@@ -44,6 +62,41 @@ definitions:
         type: string
       message:
         type: string
+    type: object
+  model.Game:
+    properties:
+      board:
+        description: Board is the current derived position. It is not persisted; Init
+          and Moves are the source of truth.
+        items:
+          type: integer
+        type: array
+      id:
+        example: 1
+        type: integer
+      init:
+        items:
+          type: integer
+        type: array
+      is_win:
+        example: false
+        type: boolean
+      level:
+        $ref: '#/definitions/model.Level'
+      level_id:
+        example: 1
+        type: integer
+      moves:
+        items:
+          items:
+            type: integer
+          type: array
+        type: array
+      user:
+        $ref: '#/definitions/model.User'
+      user_id:
+        example: 1
+        type: integer
     type: object
   model.Level:
     properties:
@@ -142,13 +195,146 @@ definitions:
         example: Ancient Temple
         type: string
     type: object
+  model.User:
+    properties:
+      created_at:
+        type: string
+      full_name:
+        example: Ada Lovelace
+        type: string
+      id:
+        example: 1
+        type: integer
+      role:
+        allOf:
+        - $ref: '#/definitions/model.UserRole'
+        example: user
+      updated_at:
+        type: string
+    type: object
+  model.UserRole:
+    enum:
+    - admin
+    - user
+    type: string
+    x-enum-varnames:
+    - UserRoleAdmin
+    - UserRoleUser
 host: localhost:8080
 info:
   contact: {}
-  description: HTTP API for managing Mystic Square puzzle levels.
+  description: HTTP API for Mystic Square levels, users, and sliding-puzzle games.
   title: Mystic Square API
   version: "1.0"
 paths:
+  /games:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Game'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: List games
+      tags:
+      - games
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Game selection
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/handler.createGameRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Game'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: Create a game
+      tags:
+      - games
+  /games/{id}:
+    get:
+      parameters:
+      - description: Game ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Game'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: Get a game
+      tags:
+      - games
+  /games/{id}/move:
+    post:
+      consumes:
+      - application/json
+      description: Coordinates are zero-based and must select a tile adjacent to the
+        empty cell.
+      parameters:
+      - description: Game ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Move coordinates
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/handler.moveRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Game'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: Apply a move
+      tags:
+      - games
   /levels:
     get:
       description: Returns levels, optionally filtered by difficulty and paginated.
@@ -321,6 +507,39 @@ paths:
       summary: Replace a level
       tags:
       - levels
+  /users:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.User'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: List users
+      tags:
+      - users
+    post:
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.User'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: Create a default user
+      tags:
+      - users
 schemes:
 - http
 swagger: "2.0"

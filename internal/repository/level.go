@@ -8,10 +8,10 @@ import (
 	"mystic-square/internal/model"
 )
 
-// ErrNotFound is returned when a level does not exist.
+// ErrNotFound is returned when a requested resource does not exist.
 var ErrNotFound = errors.New("level not found")
 
-// ErrIDExhausted is returned when no new level identifier can be assigned.
+// ErrIDExhausted is returned when no new resource identifier can be assigned.
 var ErrIDExhausted = errors.New("level id space exhausted")
 
 // LevelRepository stores levels.

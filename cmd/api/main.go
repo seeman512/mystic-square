@@ -15,7 +15,7 @@ import (
 
 // @title			Mystic Square API
 // @version		1.0
-// @description	HTTP API for managing Mystic Square puzzle levels.
+// @description	HTTP API for Mystic Square levels, users, and sliding-puzzle games.
 // @schemes		http
 // @host			localhost:8080
 // @BasePath		/api/v1
@@ -25,7 +25,7 @@ func main() {
 		addr = ":" + port
 	}
 
-	router := app.NewRouter()
+	var router http.Handler
 	if databaseURL := configuredDatabaseURL(); databaseURL != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		db, err := repository.OpenDatabase(ctx, databaseURL)
@@ -42,9 +42,14 @@ func main() {
 				log.Printf("close database: %v", err)
 			}
 		}()
-		router = app.NewRouterWithLevelRepository(repository.NewGORMLevelRepository(db))
+		router = app.NewRouterWithRepositories(
+			repository.NewGORMLevelRepository(db),
+			repository.NewGORMUserRepository(db),
+			repository.NewGORMGameRepository(db),
+		)
 		log.Printf("using PostgreSQL database; apply migrations before starting the API")
 	} else {
+		router = app.NewRouter()
 		log.Printf("DATABASE_URL is not set; using in-memory storage")
 	}
 

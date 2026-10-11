@@ -1,8 +1,8 @@
 # Mystic Square — Levels Project
 
-Mystic Square is a browser-based sliding-puzzle game built around the classic 15 puzzle. This repository contains **Release 1: the level service**—a REST API for creating, listing, retrieving, updating, and deleting level configurations. It also contains the Lesson 8 PostgreSQL persistence foundation: GORM mappings and migrations for levels, users, and game sessions.
+Mystic Square is a browser-based sliding-puzzle game built around the classic 15 puzzle. This repository contains a REST API for creating, listing, retrieving, updating, and deleting level configurations, plus default users and game sessions. It also contains the PostgreSQL persistence layer: GORM mappings and migrations for levels, users, and game sessions.
 
-The level API is the current HTTP deliverable. Authentication, user/game endpoints, and the browser game are not implemented yet; the new database models and repositories provide the persistence foundation for them.
+The HTTP API currently exposes level management, default-user creation/listing, and game sessions. Authentication and the browser game are not implemented yet; user and game endpoints use the selected user/level IDs directly.
 
 ## 1. Project overview
 
@@ -115,7 +115,7 @@ migrate -database "${DATABASE_URL:-postgres://$PG_USER:$PG_PASSWORD@$PG_HOST:$PG
 go run ./cmd/api
 ```
 
-The database connection uses a bounded connection pool and GORM SQL logging at `Info` level for local diagnostics. `.env` is not loaded automatically by Go; export it with `set -a; source .env; set +a` before starting the API. The `users` and `games` models/repositories are available to the persistence layer; HTTP endpoints for authentication and games are planned work.
+The database connection uses a bounded connection pool and GORM SQL logging at `Info` level for local diagnostics. `.env` is not loaded automatically by Go; export it with `set -a; source .env; set +a` before starting the API. The `users` and `games` models/repositories back the HTTP endpoints. `POST /api/v1/users` creates a default regular user, and `GET /api/v1/users` lists users.
 
 Run a single API test stage:
 
@@ -137,6 +137,12 @@ All successful responses except `204 No Content` and all error responses use JSO
 | `GET /api/v1/levels/{id}` | `200` — level | `400` invalid ID, `404` not found |
 | `PUT /api/v1/levels/{id}` | `200` — updated level | `400` invalid ID, `422` validation error, `404` not found |
 | `DELETE /api/v1/levels/{id}` | `204` — empty body | `400` invalid ID, `404` not found |
+| `POST /api/v1/users` | `201` — default user | `500` internal error |
+| `GET /api/v1/users` | `200` — array of users | `500` internal error |
+| `POST /api/v1/games` | `201` — shuffled game | `409` duplicate game, `422` invalid request |
+| `GET /api/v1/games` | `200` — array of games | `500` internal error |
+| `GET /api/v1/games/{id}` | `200` — game with current board | `400` invalid ID, `404` not found |
+| `POST /api/v1/games/{id}/move` | `200` — updated game | `404` not found, `422` invalid move |
 
 Unknown routes return `404`; unsupported methods are rejected with a client error (`4xx`).
 
@@ -182,6 +188,25 @@ curl -i -X PUT http://localhost:8080/api/v1/levels/1 \
 curl -i -X DELETE http://localhost:8080/api/v1/levels/1
 ```
 
+### Users and games
+
+Create a default regular user and use its ID with a selected level to start a game:
+
+```bash
+user_id=$(curl -s -X POST http://localhost:8080/api/v1/users | jq -r .id)
+level_id=1
+curl -s -X POST http://localhost:8080/api/v1/games \
+  -H 'Content-Type: application/json' \
+  -d "{\"user_id\":$user_id,\"level_id\":$level_id}"
+
+curl http://localhost:8080/api/v1/users
+curl http://localhost:8080/api/v1/games
+curl -X POST http://localhost:8080/api/v1/games/1/move \
+  -H 'Content-Type: application/json' -d '{"row":2,"column":1}'
+```
+
+Game creation starts with the ordered board, performs 1,000 legal random adjacent moves, and stores the resulting solvable board in `init`. The response also includes the derived current `board`. Move coordinates are zero-based, and a move must select a tile next to the empty cell (`0`).
+
 ### Validation and errors
 
 A request with a missing, `null`, non-string, empty, or whitespace-only required field is rejected with `422`. A malformed or empty body, a JSON array instead of an object, or an optional field with an invalid type is also rejected with `422`. Validation errors can include field-specific details.
@@ -214,7 +239,7 @@ The API uses codes including `invalid_id`, `invalid_pagination`, `validation_err
 - Responses include `Access-Control-Allow-Origin`. An `OPTIONS` preflight returns `204` and advertises supported methods, including `POST`.
 - The in-memory repository is safe for concurrent requests.
 - Each call to `app.NewRouter()` gets a new, empty repository; resources are not shared between router instances and are lost when the process exits.
-- When `DATABASE_URL` is set, `cmd/api` uses the GORM level repository and PostgreSQL migrations instead of in-memory storage.
+- When `DATABASE_URL` is set, `cmd/api` uses GORM repositories for levels, users, and games; PostgreSQL migrations must be applied before startup.
 - `games` stores `init` and `moves` as JSONB. `UNIQUE (user_id, level_id)` enforces one game per user and level; game list loading preloads both `Level` and `User` to avoid N+1 queries.
 
 ## 5. Implementation
@@ -232,20 +257,22 @@ internal/handler/            HTTP endpoints and request/response handling
 internal/middleware/         recovery, request logging, and CORS
 ```
 
-The router is exposed as `app.NewRouter() http.Handler`; `app.NewRouterWithLevelRepository` is used when a persistent repository is configured. The API uses Gin and a concurrency-safe in-memory store by default, with an optional GORM/PostgreSQL level store. Successful create and update responses return the level itself; errors use the JSON error envelope shown above.
+The router is exposed as `app.NewRouter() http.Handler`; `app.NewRouterWithRepositories` is used when persistent repositories are configured. The API uses Gin and concurrency-safe in-memory stores by default, with optional GORM/PostgreSQL stores for all resources. Successful resource operations return the resource itself; errors use the JSON error envelope shown above.
 
 ## 6. Development scope
 
 Release 1 provides:
 
 - Level creation, retrieval, listing, replacement, and deletion over HTTP.
-- In-memory storage by default, or PostgreSQL level persistence when `DATABASE_URL` is configured.
+- In-memory storage by default, or PostgreSQL persistence for levels, users, and games when `DATABASE_URL` is configured.
 - Generated IDs and timestamps, level input validation, pagination, filtering, and deterministic list order.
+- Default-user creation and listing over HTTP.
+- Solvable game creation, current-board derivation, legal moves, and win tracking.
 - Recovery, request logging, CORS, and isolation between router instances.
 - PostgreSQL migrations and GORM models/repositories for `Level`, `User`, and `Game`.
 - Database constraints for supported user roles and one game per user/level.
 
-Authentication, authorization middleware, user endpoints, game endpoints, solvable-board generation, and browser UI remain outside the current HTTP release. The model layer exposes the admin rule (`User.CanManageLevels`), while enforcement at the HTTP boundary requires authentication identity propagation.
+Authentication, authorization middleware, and the browser UI remain outside the current HTTP release. The model layer exposes the admin rule (`User.CanManageLevels`), while enforcement at the HTTP boundary requires authentication identity propagation. Game creation starts from solved order and performs 1,000 legal random adjacent moves, preserving solvability. Move coordinates are zero-based (`row`, `column`); for example, on a 3×3 board `row: 2, column: 1` selects tile 8 when the empty cell is to its right.
 
 ## 7. Lesson 8 Report
 

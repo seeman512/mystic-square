@@ -1,6 +1,7 @@
 module mystic-square
 
 go 1.27
+toolchain go1.27.1
 
 require (
 	github.com/gin-gonic/gin v1.12.0

@@ -1,7 +1,7 @@
 package model
 
-// Move stores the row and column of the tile moved by a player.
-// It is represented as a JSON pair, for example [4, 2].
+// Move stores the zero-based row and column of the tile moved by a player.
+// It is represented as a JSON pair, for example [2, 1].
 type Move [2]int
 
 // Game stores one player's progress on one level.
@@ -14,6 +14,8 @@ type Game struct {
 	Init    []int  `json:"init" gorm:"type:jsonb;serializer:json;not null"`
 	Moves   []Move `json:"moves" gorm:"type:jsonb;serializer:json;not null;default:'[]'"`
 	IsWin   bool   `json:"is_win" gorm:"not null;default:false" example:"false"`
+	// Board is the current derived position. It is not persisted; Init and Moves are the source of truth.
+	Board []int `json:"board,omitempty" gorm:"-"`
 
 	Level *Level `json:"level,omitempty" gorm:"foreignKey:LevelID"`
 	User  *User  `json:"user,omitempty" gorm:"foreignKey:UserID"`

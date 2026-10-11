@@ -35,6 +35,14 @@ func (r *GORMGameRepository) Create(ctx context.Context, game model.Game) (model
 	if err := r.checkDB(); err != nil {
 		return model.Game{}, err
 	}
+	var count int64
+	if err := r.db.WithContext(repositoryContext(ctx)).Model(&model.Game{}).
+		Where("user_id = ? AND level_id = ?", game.UserID, game.LevelID).Count(&count).Error; err != nil {
+		return model.Game{}, fmt.Errorf("check existing game: %w", err)
+	}
+	if count > 0 {
+		return model.Game{}, ErrConflict
+	}
 	if err := r.db.WithContext(repositoryContext(ctx)).Create(&game).Error; err != nil {
 		return model.Game{}, fmt.Errorf("create game: %w", err)
 	}
