@@ -1,8 +1,8 @@
 # Mystic Square — Levels Project
 
-Mystic Square is a browser-based sliding-puzzle game built around the classic 15 puzzle. This repository contains **Release 1: the level service**—a REST API for creating, listing, retrieving, updating, and deleting level configurations. It uses the `levels` project variant only.
+Mystic Square is a browser-based sliding-puzzle game built around the classic 15 puzzle. This repository contains **Release 1: the level service**—a REST API for creating, listing, retrieving, updating, and deleting level configurations. It also contains the Lesson 8 PostgreSQL persistence foundation: GORM mappings and migrations for levels, users, and game sessions.
 
-The API is the current deliverable. The browser game, game-session state, persistence, and authentication are product goals, not features implemented in this release.
+The level API is the current HTTP deliverable. Authentication, user/game endpoints, and the browser game are not implemented yet; the new database models and repositories provide the persistence foundation for them.
 
 ## 1. Project overview
 
@@ -80,7 +80,7 @@ The board dimensions and `time_limit` are additional level settings; the variant
 
 ## 3. How to run and test
 
-Use Go 1.27.1. Start the HTTP API from the repository root:
+Use Go 1.27.1. Without `DATABASE_URL`, the API uses an isolated in-memory level repository, which is useful for local development and the existing HTTP tests. Start the HTTP API from the repository root:
 
 ```bash
 go run ./cmd/api
@@ -98,6 +98,24 @@ Run the complete test suite, including the race detector:
 go test ./...
 go test -race ./...
 ```
+
+### PostgreSQL mode
+
+The Lesson 8 database path is selected by setting `DATABASE_URL`, or by exporting the `PG_*` variables shown in `.env.example`. The application deliberately does not call GORM `AutoMigrate`.
+
+```bash
+# For the local Docker database:
+docker compose up -d postgres
+set -a; source .env.example; set +a
+
+# Or provide DATABASE_URL directly for an existing PostgreSQL server:
+# export DATABASE_URL='postgres://user:password@localhost:5432/database?sslmode=disable'
+
+migrate -database "${DATABASE_URL:-postgres://$PG_USER:$PG_PASSWORD@$PG_HOST:$PG_PORT/$PG_DB?sslmode=disable}" -path migrations up
+go run ./cmd/api
+```
+
+The database connection uses a bounded connection pool and GORM SQL logging at `Info` level for local diagnostics. `.env` is not loaded automatically by Go; export it with `set -a; source .env; set +a` before starting the API. The `users` and `games` models/repositories are available to the persistence layer; HTTP endpoints for authentication and games are planned work.
 
 Run a single API test stage:
 
@@ -196,35 +214,95 @@ The API uses codes including `invalid_id`, `invalid_pagination`, `validation_err
 - Responses include `Access-Control-Allow-Origin`. An `OPTIONS` preflight returns `204` and advertises supported methods, including `POST`.
 - The in-memory repository is safe for concurrent requests.
 - Each call to `app.NewRouter()` gets a new, empty repository; resources are not shared between router instances and are lost when the process exits.
+- When `DATABASE_URL` is set, `cmd/api` uses the GORM level repository and PostgreSQL migrations instead of in-memory storage.
+- `games` stores `init` and `moves` as JSONB. `UNIQUE (user_id, level_id)` enforces one game per user and level; game list loading preloads both `Level` and `User` to avoid N+1 queries.
 
 ## 5. Implementation
 
 The current release separates responsibilities into layers:
 
 ```text
-cmd/api/main.go              starts the HTTP server
+cmd/api/main.go              starts the HTTP server and selects storage
 internal/app/app.go          builds and configures the router
-internal/model/              level types and validation
-internal/repository/         repository interface and in-memory implementation
+internal/model/              level, user, and game types and validation
+internal/repository/         in-memory and GORM repositories plus DB setup
+migrations/                  PostgreSQL schema managed by golang-migrate
 internal/service/            level business operations
 internal/handler/            HTTP endpoints and request/response handling
 internal/middleware/         recovery, request logging, and CORS
 ```
 
-The router is exposed as `app.NewRouter() http.Handler`. The API uses Gin and a concurrency-safe in-memory store. Successful create and update responses return the level itself; errors use the JSON error envelope shown above.
+The router is exposed as `app.NewRouter() http.Handler`; `app.NewRouterWithLevelRepository` is used when a persistent repository is configured. The API uses Gin and a concurrency-safe in-memory store by default, with an optional GORM/PostgreSQL level store. Successful create and update responses return the level itself; errors use the JSON error envelope shown above.
 
 ## 6. Development scope
 
 Release 1 provides:
 
 - Level creation, retrieval, listing, replacement, and deletion over HTTP.
-- In-memory storage, generated IDs and timestamps, and level input validation.
-- Pagination, difficulty filtering, deterministic list order, and JSON error responses.
+- In-memory storage by default, or PostgreSQL level persistence when `DATABASE_URL` is configured.
+- Generated IDs and timestamps, level input validation, pagination, filtering, and deterministic list order.
 - Recovery, request logging, CORS, and isolation between router instances.
+- PostgreSQL migrations and GORM models/repositories for `Level`, `User`, and `Game`.
+- Database constraints for supported user roles and one game per user/level.
 
-The broader Mystic Square product specification also includes a browser-based puzzle, solvable board generation, game-session state, user accounts, and admin-only level creation. Those features are outside the current API release. A future persistent implementation will need to retain level IDs and timestamps across restarts and enforce the intended role permissions on the server.
+Authentication, authorization middleware, user endpoints, game endpoints, solvable-board generation, and browser UI remain outside the current HTTP release. The model layer exposes the admin rule (`User.CanManageLevels`), while enforcement at the HTTP boundary requires authentication identity propagation.
 
-## 7. Assignment workflow and submission
+## 7. Lesson 8 Report
+
+### Migration prompt
+
+The migration prompt was adapted from the original Lesson 8 assignment to the Mystic Square domain:
+
+```text
+Generate PostgreSQL golang-migrate up/down migrations for the existing Level model
+and new User and Game models. User has id, full_name and role (admin|user). Game
+has id, level_id, user_id, init (JSONB board array), moves (JSONB array of [row,
+column] pairs), and is_win BOOLEAN DEFAULT FALSE. Add explicit foreign keys,
+indexes, CHECK(role IN ('admin','user')), UNIQUE(user_id, level_id), and reverse-order
+down migrations. Use ON DELETE RESTRICT for level references and ON DELETE CASCADE
+for user-owned games. Do not use GORM AutoMigrate.
+```
+
+The stored migrations are `migrations/000001_create_levels.*.sql` and
+`migrations/000002_create_users_and_games.*.sql`. `JSONB` was chosen instead of a
+fixed-size PostgreSQL array because level dimensions are configurable and moves are
+pairs of coordinates.
+
+### N+1 proof
+
+The original Release 1 implementation used an in-memory level repository, so it had
+no SQL N+1 baseline to measure. It would be misleading to invent a BEFORE latency or
+terminal log. The new database path avoids introducing that baseline: game list
+loading is implemented in `internal/repository/game.go` with
+`Preload("Level").Preload("User")`, which produces the main query plus batched
+association queries rather than one query per game.
+
+Capture project-specific measurements after starting PostgreSQL and adding a game-list
+endpoint or integration harness. Record the actual output in this table:
+
+| Variant | Expected SQL shape | SELECT count | Latency |
+|---|---|---:|---:|
+| BEFORE (deliberately naive comparison) | main query + one `levels` and one `users` query per game | not run in Release 1 | not measured |
+| AFTER (`GORMGameRepository.List`) | main query + batched `IN (...)` preload queries | constant with respect to game count | not measured |
+
+The relevant AFTER code is:
+
+```go
+r.db.WithContext(ctx).
+    Preload("Level").
+    Preload("User").
+    Order("id ASC").
+    Find(&games)
+```
+
+### Roles and game uniqueness
+
+`model.User.CanManageLevels` expresses the admin rule, while authentication middleware
+must provide the identity before HTTP authorization can enforce it. The database
+constraint `UNIQUE (user_id, level_id)` enforces the one-game-per-user-per-level rule
+even when multiple requests race.
+
+## 8. Assignment workflow and submission
 
 1. Confirm that the root `VARIANT` file contains `levels`.
 2. Run `go test ./...` while implementing the service; use the staged tests to narrow down failures.

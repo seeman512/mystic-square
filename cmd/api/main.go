@@ -1,11 +1,16 @@
 package main
 
 import (
+	"context"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"time"
 
 	"mystic-square/internal/app"
+	"mystic-square/internal/repository"
 )
 
 // @title			Mystic Square API
@@ -20,8 +25,69 @@ func main() {
 		addr = ":" + port
 	}
 
+	router := app.NewRouter()
+	if databaseURL := configuredDatabaseURL(); databaseURL != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		db, err := repository.OpenDatabase(ctx, databaseURL)
+		cancel()
+		if err != nil {
+			log.Fatal(err)
+		}
+		sqlDB, err := db.DB()
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer func() {
+			if err := sqlDB.Close(); err != nil {
+				log.Printf("close database: %v", err)
+			}
+		}()
+		router = app.NewRouterWithLevelRepository(repository.NewGORMLevelRepository(db))
+		log.Printf("using PostgreSQL database; apply migrations before starting the API")
+	} else {
+		log.Printf("DATABASE_URL is not set; using in-memory storage")
+	}
+
 	log.Printf("listening on %s", addr)
-	if err := http.ListenAndServe(addr, app.NewRouter()); err != nil {
+	if err := http.ListenAndServe(addr, router); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func configuredDatabaseURL() string {
+	if databaseURL := os.Getenv("DATABASE_URL"); databaseURL != "" {
+		return databaseURL
+	}
+
+	user := os.Getenv("PG_USER")
+	if user == "" {
+		return ""
+	}
+	database := os.Getenv("PG_DB")
+	if database == "" {
+		database = user
+	}
+	host := environmentOr("PG_HOST", "localhost")
+	port := environmentOr("PG_PORT", "5432")
+	sslmode := environmentOr("PG_SSLMODE", "disable")
+
+	dsn := url.URL{
+		Scheme:   "postgres",
+		Host:     net.JoinHostPort(host, port),
+		Path:     "/" + database,
+		RawQuery: url.Values{"sslmode": {sslmode}}.Encode(),
+	}
+	if password := os.Getenv("PG_PASSWORD"); password != "" {
+		dsn.User = url.UserPassword(user, password)
+	} else {
+		dsn.User = url.User(user)
+	}
+	return dsn.String()
+}
+
+func environmentOr(name, fallback string) string {
+	if value := os.Getenv(name); value != "" {
+		return value
+	}
+	return fallback
 }

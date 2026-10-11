@@ -19,8 +19,16 @@ import (
 )
 
 // NewRouter returns a fully configured HTTP handler with fresh in-memory storage.
+// It is kept as a convenient isolated router for unit tests and local demos.
 func NewRouter() http.Handler {
-	levelRepository := repository.NewInMemoryLevelRepository()
+	return NewRouterWithLevelRepository(repository.NewInMemoryLevelRepository())
+}
+
+// NewRouterWithLevelRepository wires the HTTP API to the supplied level store.
+func NewRouterWithLevelRepository(levelRepository repository.LevelRepository) http.Handler {
+	if levelRepository == nil {
+		levelRepository = repository.NewInMemoryLevelRepository()
+	}
 	levelService := service.NewLevelService(levelRepository)
 	levelHandler := handler.NewLevelHandler(levelService)
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))

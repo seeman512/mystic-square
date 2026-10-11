@@ -24,20 +24,20 @@ const (
 
 // Level is a playable puzzle configuration.
 type Level struct {
-	ID    uint64 `json:"id" example:"1"`
-	Title string `json:"title" example:"Ancient Temple"`
+	ID    uint64 `json:"id" gorm:"primaryKey" example:"1"`
+	Title string `json:"title" gorm:"not null" example:"Ancient Temple"`
 	// Theme describes the level's setting, such as a temple, forest, or space station.
-	Theme string `json:"theme" example:"temple"`
+	Theme string `json:"theme" gorm:"not null" example:"temple"`
 	// Objective describes what the player must accomplish to complete the level.
-	Objective   string     `json:"objective" example:"solve the puzzle"`
+	Objective   string     `json:"objective" gorm:"not null" example:"solve the puzzle"`
 	Description *string    `json:"description" example:"A temple hidden in the jungle."`
-	Difficulty  Difficulty `json:"difficulty" enums:"low,medium,hard" example:"medium"`
-	Columns     int        `json:"columns" minimum:"2" maximum:"100" example:"4"`
-	Rows        int        `json:"rows" minimum:"2" maximum:"100" example:"4"`
+	Difficulty  Difficulty `json:"difficulty" gorm:"not null" enums:"low,medium,hard" example:"medium"`
+	Columns     int        `json:"columns" gorm:"not null;default:4" minimum:"2" maximum:"100" example:"4"`
+	Rows        int        `json:"rows" gorm:"not null;default:4" minimum:"2" maximum:"100" example:"4"`
 	TimeLimit   *int       `json:"time_limit" minimum:"-1" maximum:"3600" example:"300"`
 	MoveLimit   *int       `json:"move_limit" minimum:"-1" maximum:"10000" example:"50"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	CreatedAt   time.Time  `json:"created_at" gorm:"not null"`
+	UpdatedAt   time.Time  `json:"updated_at" gorm:"not null"`
 }
 
 // EffectiveTimeLimit returns the configured time limit, or -1 when unlimited.
