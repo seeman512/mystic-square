@@ -26,42 +26,96 @@ func TestAuthenticationAndRoleAuthorization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, test := range []struct {
-		name   string
-		token  string
-		status int
-	}{
-		{name: "missing token", status: http.StatusUnauthorized},
-		{name: "expired token", token: expiredToken, status: http.StatusUnauthorized},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			response := e.doWithToken(http.MethodGet, "/api/v1/games", "", test.token)
-			e.expect(response, test.status)
-		})
-	}
-
-	for _, test := range []struct {
-		name   string
-		token  string
-		status int
-	}{
-		{name: "user cannot create levels", token: userToken, status: http.StatusForbidden},
-		{name: "admin can create levels", token: e.adminToken, status: http.StatusCreated},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			response := e.doWithToken(http.MethodPost, "/api/v1/levels", `{"title":"A level","theme":"classic","objective":"solve","difficulty":"medium"}`, test.token)
-			e.expect(response, test.status)
-		})
-	}
 
 	rolePath := "/api/v1/users/" + strconv.Itoa(registeredUserID) + "/role"
-	deniedRoleUpdate := e.doWithToken(http.MethodPut, rolePath, `{"role":"admin"}`, userToken)
-	e.expect(deniedRoleUpdate, http.StatusForbidden)
-	invalidRole := e.doWithToken(http.MethodPut, rolePath, `{"role":"owner"}`, e.adminToken)
-	e.expect(invalidRole, http.StatusUnprocessableEntity)
-	adminRoleUpdate := e.doWithToken(http.MethodPut, rolePath, `{"role":"admin"}`, e.adminToken)
-	e.expect(adminRoleUpdate, http.StatusOK)
-	if got := adminRoleUpdate.obj(t)["role"]; got != string(model.UserRoleAdmin) {
-		t.Fatalf("updated role = %v, want admin", got)
+	levelBody := `{"title":"A level","theme":"classic","objective":"solve","difficulty":"medium"}`
+	roleBody := `{"role":"admin"}`
+
+	tests := []struct {
+		name           string
+		method         string
+		path           string
+		body           string
+		token          string
+		expectedStatus int
+		expectedCode   string
+		expectedRole   string
+	}{
+		{
+			name:           "missing token",
+			method:         http.MethodGet,
+			path:           "/api/v1/games",
+			expectedStatus: http.StatusUnauthorized,
+			expectedCode:   "unauthorized",
+		},
+		{
+			name:           "expired token",
+			method:         http.MethodGet,
+			path:           "/api/v1/games",
+			token:          expiredToken,
+			expectedStatus: http.StatusUnauthorized,
+			expectedCode:   "unauthorized",
+		},
+		{
+			name:           "user cannot create levels",
+			method:         http.MethodPost,
+			path:           "/api/v1/levels",
+			body:           levelBody,
+			token:          userToken,
+			expectedStatus: http.StatusForbidden,
+			expectedCode:   "forbidden",
+		},
+		{
+			name:           "admin can create levels",
+			method:         http.MethodPost,
+			path:           "/api/v1/levels",
+			body:           levelBody,
+			token:          e.adminToken,
+			expectedStatus: http.StatusCreated,
+		},
+		{
+			name:           "user cannot update roles",
+			method:         http.MethodPut,
+			path:           rolePath,
+			body:           roleBody,
+			token:          userToken,
+			expectedStatus: http.StatusForbidden,
+			expectedCode:   "forbidden",
+		},
+		{
+			name:           "admin cannot set an invalid role",
+			method:         http.MethodPut,
+			path:           rolePath,
+			body:           `{"role":"owner"}`,
+			token:          e.adminToken,
+			expectedStatus: http.StatusUnprocessableEntity,
+			expectedCode:   "validation_error",
+		},
+		{
+			name:           "admin can update roles",
+			method:         http.MethodPut,
+			path:           rolePath,
+			body:           roleBody,
+			token:          e.adminToken,
+			expectedStatus: http.StatusOK,
+			expectedRole:   string(model.UserRoleAdmin),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			response := e.doWithToken(tt.method, tt.path, tt.body, tt.token)
+			if tt.expectedCode != "" {
+				e.wantError(response, tt.expectedStatus, tt.expectedCode)
+			} else {
+				e.expect(response, tt.expectedStatus)
+			}
+
+			if tt.expectedRole != "" {
+				if got := response.obj(t)["role"]; got != tt.expectedRole {
+					t.Fatalf("updated role = %v, want %s", got, tt.expectedRole)
+				}
+			}
+		})
 	}
 }
