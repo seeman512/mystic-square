@@ -19,6 +19,10 @@ import (
 // @schemes		http
 // @host			localhost:8080
 // @BasePath		/api/v1
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer " followed by a JWT token.
 func main() {
 	if len([]byte(os.Getenv("JWT_SECRET"))) < 32 {
 		log.Fatal("JWT_SECRET must be set to at least 32 bytes")

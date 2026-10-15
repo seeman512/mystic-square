@@ -59,8 +59,11 @@ func (h *LevelHandler) RegisterRoutes(router *gin.RouterGroup) {
 // @Produce      json
 // @Param        input  body      model.LevelInput  true  "Level payload"
 // @Success      201    {object}  model.Level
+// @Failure      401    {object}  model.ErrorResponse
+// @Failure      403    {object}  model.ErrorResponse
 // @Failure      422    {object}  levelErrorResponse  "Invalid level payload"
 // @Failure      500    {object}  model.ErrorResponse
+// @Security     BearerAuth
 // @Router       /levels [post]
 func (h *LevelHandler) Create(c *gin.Context) {
 	input, err := decodeLevelInput(c.Request.Body)
@@ -159,9 +162,12 @@ func (h *LevelHandler) List(c *gin.Context) {
 // @Param        input  body      model.LevelInput  true  "Level payload"
 // @Success      200    {object}  model.Level
 // @Failure      400    {object}  model.ErrorResponse  "Invalid level ID"
+// @Failure      401    {object}  model.ErrorResponse
+// @Failure      403    {object}  model.ErrorResponse
 // @Failure      404    {object}  model.ErrorResponse  "Level not found"
 // @Failure      422    {object}  levelErrorResponse  "Invalid level payload"
 // @Failure      500    {object}  model.ErrorResponse
+// @Security     BearerAuth
 // @Router       /levels/{id} [put]
 func (h *LevelHandler) Update(c *gin.Context) {
 	id, ok := parseID(c.Param("id"))
@@ -192,8 +198,11 @@ func (h *LevelHandler) Update(c *gin.Context) {
 // @Param        id   path  int  true  "Level ID"
 // @Success      204  "No content"
 // @Failure      400  {object}  model.ErrorResponse  "Invalid level ID"
+// @Failure      401  {object}  model.ErrorResponse
+// @Failure      403  {object}  model.ErrorResponse
 // @Failure      404  {object}  model.ErrorResponse  "Level not found"
 // @Failure      500  {object}  model.ErrorResponse
+// @Security     BearerAuth
 // @Router       /levels/{id} [delete]
 func (h *LevelHandler) Delete(c *gin.Context) {
 	id, ok := parseID(c.Param("id"))

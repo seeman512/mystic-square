@@ -46,8 +46,10 @@ type createGameRequest struct {
 // @Produce json
 // @Param input body createGameRequest true "Game selection"
 // @Success 201 {object} model.Game
+// @Failure 401 {object} model.ErrorResponse
 // @Failure 409 {object} model.ErrorResponse
 // @Failure 422 {object} model.ErrorResponse
+// @Security BearerAuth
 // @Router /games [post]
 func (h *GameHandler) Create(c *gin.Context) {
 	userID, ok := authenticatedUserID(c)
@@ -79,7 +81,9 @@ func (h *GameHandler) Create(c *gin.Context) {
 // @Tags games
 // @Produce json
 // @Success 200 {array} model.Game
+// @Failure 401 {object} model.ErrorResponse
 // @Failure 500 {object} model.ErrorResponse
+// @Security BearerAuth
 // @Router /games [get]
 func (h *GameHandler) List(c *gin.Context) {
 	games, err := h.service.List(c.Request.Context())
@@ -112,7 +116,9 @@ func (h *GameHandler) List(c *gin.Context) {
 // @Param id path int true "Game ID"
 // @Success 200 {object} model.Game
 // @Failure 400 {object} model.ErrorResponse
+// @Failure 401 {object} model.ErrorResponse
 // @Failure 404 {object} model.ErrorResponse
+// @Security BearerAuth
 // @Router /games/{id} [get]
 func (h *GameHandler) Get(c *gin.Context) {
 	id, ok := parseID(c.Param("id"))
@@ -148,9 +154,13 @@ type moveRequest struct {
 // @Param id path int true "Game ID"
 // @Param input body moveRequest true "Move coordinates"
 // @Success 200 {object} model.Game
+// @Failure 400 {object} model.ErrorResponse
+// @Failure 401 {object} model.ErrorResponse
 // @Failure 404 {object} model.ErrorResponse
 // @Failure 422 {object} model.ErrorResponse
+// @Security BearerAuth
 // @Router /games/{id}/move [post]
+// @Router /games/{id}/moves [post]
 func (h *GameHandler) Move(c *gin.Context) {
 	id, ok := parseID(c.Param("id"))
 	if !ok {

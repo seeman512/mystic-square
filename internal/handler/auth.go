@@ -50,6 +50,16 @@ type authResponse struct {
 }
 
 // Register handles POST /auth/register. The account role is always user.
+//
+// @Summary Register a user
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param input body RegisterRequest true "Registration payload"
+// @Success 201 {object} authResponse
+// @Failure 422 {object} model.ErrorResponse
+// @Failure 500 {object} model.ErrorResponse
+// @Router /auth/register [post]
 func (h *AuthHandler) Register(c *gin.Context) {
 	var input RegisterRequest
 	if err := decodeStrictJSON(c.Request.Body, &input); err != nil {
@@ -74,6 +84,17 @@ func (h *AuthHandler) Register(c *gin.Context) {
 }
 
 // Login handles POST /auth/login with a non-enumerating failure response.
+//
+// @Summary Login
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param input body LoginRequest true "Login credentials"
+// @Success 200 {object} authResponse
+// @Failure 401 {object} model.ErrorResponse
+// @Failure 422 {object} model.ErrorResponse
+// @Failure 500 {object} model.ErrorResponse
+// @Router /auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var input LoginRequest
 	if err := decodeStrictJSON(c.Request.Body, &input); err != nil {

@@ -33,6 +33,16 @@ type updateUserRoleRequest struct {
 }
 
 // List handles GET /users.
+//
+// @Summary List users
+// @Tags users
+// @Produce json
+// @Success 200 {array} model.User
+// @Failure 401 {object} model.ErrorResponse
+// @Failure 403 {object} model.ErrorResponse
+// @Failure 500 {object} model.ErrorResponse
+// @Security BearerAuth
+// @Router /users [get]
 func (h *UserHandler) List(c *gin.Context) {
 	users, err := h.service.List(c.Request.Context())
 	if err != nil {
@@ -43,6 +53,22 @@ func (h *UserHandler) List(c *gin.Context) {
 }
 
 // UpdateRole handles PUT /users/:id/role.
+//
+// @Summary Update a user's role
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param id path int true "User ID"
+// @Param input body updateUserRoleRequest true "Role update"
+// @Success 200 {object} model.User
+// @Failure 400 {object} model.ErrorResponse
+// @Failure 401 {object} model.ErrorResponse
+// @Failure 403 {object} model.ErrorResponse
+// @Failure 404 {object} model.ErrorResponse
+// @Failure 422 {object} model.ErrorResponse
+// @Failure 500 {object} model.ErrorResponse
+// @Security BearerAuth
+// @Router /users/{id}/role [put]
 func (h *UserHandler) UpdateRole(c *gin.Context) {
 	id, ok := parseID(c.Param("id"))
 	if !ok {
