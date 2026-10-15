@@ -4,6 +4,57 @@ Mystic Square is a browser-based sliding-puzzle game built around the classic 15
 
 The HTTP API exposes public level browsing and authentication, admin-only level management and user administration, and authenticated game sessions. New registrations always receive the `user` role; an admin account must be provisioned out-of-band by a trusted operator.
 
+## Security design
+
+### Roles
+
+| Role | Permissions |
+|---|---|
+| `admin` | Browse and play levels; create, update, and delete levels; list users; and change a user's role. |
+| `user` | Browse and play levels and access only games owned by that account. |
+
+Registration always creates the `user` role. Clients cannot choose roles, IDs, password hashes, or system timestamps. Admin accounts must be provisioned or promoted out-of-band by a trusted operator; there is no public admin-registration path.
+
+### Access-control matrix
+
+Public routes require no token:
+
+- `GET /health`
+- `GET /swagger/*any`
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
+- `GET /api/v1/levels`
+- `GET /api/v1/levels/:id`
+
+Authenticated users or admins may access:
+
+- `POST /api/v1/games`
+- `GET /api/v1/games` — users see their games; admins see all
+- `GET /api/v1/games/:id` — owner or admin only
+- `POST /api/v1/games/:id/move` and `/moves` — owner or admin only
+
+Admins only may access the following routes. `AuthMiddleware` executes before `RequireRole`:
+
+- `POST /api/v1/levels`
+- `PUT /api/v1/levels/:id`
+- `DELETE /api/v1/levels/:id`
+- `GET /api/v1/users`
+- `PUT /api/v1/users/:id/role`
+
+`POST /api/v1/users` is not exposed; user creation is performed only through registration. No librarian or staff role exists in this project.
+
+### DTO and credential rules
+
+- `RegisterRequest` accepts only `email`, `full_name`, and `password`; strict JSON decoding rejects unknown fields such as `role`, `id`, and `password_hash`.
+- `LoginRequest` accepts only `email` and `password`.
+- The update-user-role request accepts only `role`, and only admins can reach the endpoint.
+- Game creation accepts only `level_id`. The owner ID comes from the validated JWT, not client-controlled JSON.
+- `model.User.PasswordHash` is tagged `json:"-"`; API responses omit it.
+- Passwords use bcrypt hashes with `bcrypt.DefaultCost`. Login returns the same HTTP `401` response, `invalid credentials`, for unknown emails and wrong passwords.
+- JWTs use HS256 with `user_id`, `role`, and `exp` claims and a 24-hour lifetime. The key is read only from `JWT_SECRET`; startup requires at least 32 bytes.
+- Authentication and role failures use `AbortWithStatusJSON` and stop the handler chain.
+- Request logging records method, path, status, and duration but never reads or logs request bodies, so password fields are not logged.
+
 ## 1. Project overview
 
 Players solve a sliding puzzle by moving numbered tiles into the empty cell until the board is in its solved order. A level configures a puzzle's theme, objective, difficulty, board dimensions, and optional limits.
