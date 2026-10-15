@@ -10,24 +10,44 @@ import (
 	"time"
 
 	"mystic-square/internal/app"
+	"mystic-square/internal/auth"
+	"mystic-square/internal/model"
+	"mystic-square/internal/repository"
 )
 
 // env bundles a fresh router with the student's variant.
+const testJWTSecret = "unit-test-secret-that-is-at-least-32-bytes-long"
+
 type env struct {
-	t *testing.T
-	h http.Handler
-	v Variant
+	t          *testing.T
+	h          http.Handler
+	v          Variant
+	adminToken string
 }
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
 
 	v := mustVariant(t)
-	h := app.NewRouter()
-	if h == nil {
-		t.Fatal("app.NewRouter() returned nil")
+	t.Setenv("JWT_SECRET", testJWTSecret)
+	levels := repository.NewInMemoryLevelRepository()
+	users := repository.NewInMemoryUserRepository()
+	games := repository.NewInMemoryGameRepository()
+	admin, err := users.Create(t.Context(), model.User{
+		Email: "admin@example.test", FullName: "Test Admin", Role: model.UserRoleAdmin,
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	return &env{t: t, h: h, v: v}
+	adminToken, err := auth.SignToken(testJWTSecret, admin, time.Now().Add(auth.TokenLifetime))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := app.NewRouterWithRepositories(levels, users, games)
+	if h == nil {
+		t.Fatal("app.NewRouterWithRepositories() returned nil")
+	}
+	return &env{t: t, h: h, v: v, adminToken: adminToken}
 }
 
 type resp struct {
@@ -45,6 +65,9 @@ func (e *env) try(method, path, body string) (resp, any) {
 		req.Header.Set("Content-Type", "application/json")
 	} else {
 		req = httptest.NewRequest(method, path, nil)
+	}
+	if !strings.HasPrefix(path, "/api/v1/auth/") {
+		req.Header.Set("Authorization", "Bearer "+e.adminToken)
 	}
 	return e.tryReq(req)
 }
@@ -66,6 +89,21 @@ func (e *env) do(method, path, body string) resp {
 	e.t.Helper()
 
 	r, p := e.try(method, path, body)
+	if p != nil {
+		e.t.Fatalf("%s %s: handler panicked: %v", method, path, p)
+	}
+	return r
+}
+
+// doWithToken sends a JSON body using the supplied bearer token.
+func (e *env) doWithToken(method, path, body, token string) resp {
+	e.t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	r, p := e.tryReq(req)
 	if p != nil {
 		e.t.Fatalf("%s %s: handler panicked: %v", method, path, p)
 	}

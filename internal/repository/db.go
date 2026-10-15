@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
+	"os"
 	"time"
 
 	"gorm.io/driver/postgres"
@@ -28,7 +30,13 @@ func OpenDatabase(ctx context.Context, url string) (*gorm.DB, error) {
 	}
 
 	db, err := gorm.Open(postgres.Open(url), &gorm.Config{
-		Logger: gormLogger.Default.LogMode(gormLogger.Info),
+		Logger: gormLogger.New(log.New(os.Stderr, "", log.LstdFlags), gormLogger.Config{
+			SlowThreshold:        time.Second,
+			LogLevel:             gormLogger.Warn,
+			ParameterizedQueries: true,
+			Colorful:             false,
+		}),
+		TranslateError: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("open PostgreSQL database: %w", err)

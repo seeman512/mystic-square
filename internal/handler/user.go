@@ -7,10 +7,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"mystic-square/internal/model"
 	"mystic-square/internal/service"
 )
 
-// UserHandler exposes the initial user operations.
+// UserHandler exposes administrative user operations.
 type UserHandler struct {
 	service *service.UserService
 }
@@ -20,38 +21,18 @@ func NewUserHandler(userService *service.UserService) *UserHandler {
 	return &UserHandler{service: userService}
 }
 
-// RegisterRoutes registers user routes on router.
+// RegisterRoutes registers routes intended for administrator-only groups.
 func (h *UserHandler) RegisterRoutes(router *gin.RouterGroup) {
 	users := router.Group("/users")
-	users.POST("", h.Create)
 	users.GET("", h.List)
+	users.PUT("/:id/role", h.UpdateRole)
 }
 
-// Create handles POST /users by creating a regular default user.
-//
-// @Summary Create a default user
-// @Tags users
-// @Produce json
-// @Success 201 {object} model.User
-// @Failure 500 {object} model.ErrorResponse
-// @Router /users [post]
-func (h *UserHandler) Create(c *gin.Context) {
-	user, err := h.service.CreateDefault(c.Request.Context())
-	if err != nil {
-		handleUserServiceError(c, err)
-		return
-	}
-	c.JSON(http.StatusCreated, user)
+type updateUserRoleRequest struct {
+	Role model.UserRole `json:"role"`
 }
 
 // List handles GET /users.
-//
-// @Summary List users
-// @Tags users
-// @Produce json
-// @Success 200 {array} model.User
-// @Failure 500 {object} model.ErrorResponse
-// @Router /users [get]
 func (h *UserHandler) List(c *gin.Context) {
 	users, err := h.service.List(c.Request.Context())
 	if err != nil {
@@ -59,6 +40,27 @@ func (h *UserHandler) List(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, users)
+}
+
+// UpdateRole handles PUT /users/:id/role.
+func (h *UserHandler) UpdateRole(c *gin.Context) {
+	id, ok := parseID(c.Param("id"))
+	if !ok {
+		writeError(c, http.StatusBadRequest, "invalid_id", "user id must be a positive integer")
+		return
+	}
+	var input updateUserRoleRequest
+	if err := decodeStrictJSON(c.Request.Body, &input); err != nil ||
+		(input.Role != model.UserRoleAdmin && input.Role != model.UserRoleUser) {
+		writeError(c, http.StatusUnprocessableEntity, "validation_error", "role must be admin or user")
+		return
+	}
+	user, err := h.service.UpdateRole(c.Request.Context(), id, input.Role)
+	if err != nil {
+		handleUserServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, user)
 }
 
 func handleUserServiceError(c *gin.Context, err error) {

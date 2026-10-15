@@ -1,8 +1,8 @@
 # Mystic Square — Levels Project
 
-Mystic Square is a browser-based sliding-puzzle game built around the classic 15 puzzle. This repository contains a REST API for creating, listing, retrieving, updating, and deleting level configurations, plus default users and game sessions. It also contains the PostgreSQL persistence layer: GORM mappings and migrations for levels, users, and game sessions.
+Mystic Square is a browser-based sliding-puzzle game built around the classic 15 puzzle. This repository contains a REST API for level configurations, user registration and login, and game sessions. Authentication uses bcrypt password hashes and expiring HS256 JWTs; level mutations and user administration are restricted to admins. It also contains the PostgreSQL persistence layer: GORM mappings and migrations for levels, users, and game sessions.
 
-The HTTP API currently exposes level management, default-user creation/listing, and game sessions. Authentication and the browser game are not implemented yet; user and game endpoints use the selected user/level IDs directly.
+The HTTP API exposes public level browsing and authentication, admin-only level management and user administration, and authenticated game sessions. New registrations always receive the `user` role; an admin account must be provisioned out-of-band by a trusted operator.
 
 ## 1. Project overview
 
@@ -12,10 +12,10 @@ The product defines two roles:
 
 | Role | Intended permissions |
 |---|---|
-| `admin` | Browse and play levels; create levels. |
+| `admin` | Browse and play levels; create/update/delete levels; list users and update roles. |
 | `user` | Browse and play levels; cannot create levels. |
 
-The server must enforce these permissions when authentication and authorization are added. Release 1 does **not** implement accounts, authentication, role checks, or a browser UI; its API currently allows level creation without authentication.
+The server enforces these permissions at the HTTP boundary. A `user` can play games but cannot create or modify levels. Release 1 does not include the browser UI.
 
 ### Puzzle rules and player flow
 
@@ -27,7 +27,7 @@ The server must enforce these permissions when authentication and authorization 
 
 ### Creating a level
 
-In the complete product, an admin enters the level's required details and optional description and move limit. The application validates the input, assigns system-managed identifiers and timestamps, and makes the level available to play. Users may play levels but must not create them through either the interface or API once role-based access is implemented.
+An authenticated admin enters the level's required details and optional description and move limit. The application validates the input, assigns system-managed identifiers and timestamps, and makes the level available to play. Regular users may browse and play levels but cannot create, update, or delete them.
 
 ## 2. Level resource and fields
 
@@ -80,11 +80,14 @@ The board dimensions and `time_limit` are additional level settings; the variant
 
 ## 3. How to run and test
 
-Use Go 1.27.1. Without `DATABASE_URL`, the API uses an isolated in-memory level repository, which is useful for local development and the existing HTTP tests. Start the HTTP API from the repository root:
+Use Go 1.27.1. Without `DATABASE_URL`, the API uses isolated in-memory repositories, which are useful for local development and HTTP tests. Set a strong, unique JWT signing secret (at least 32 bytes) before starting the HTTP API from the repository root:
 
 ```bash
+export JWT_SECRET="replace-with-a-random-secret-of-at-least-32-bytes"
 go run ./cmd/api
 ```
+
+Startup fails when `JWT_SECRET` is missing or shorter than 32 bytes. The signing key is read only from this environment variable.
 
 The server listens on port `8080` by default. Set `PORT` to use another port:
 
@@ -107,6 +110,7 @@ The Lesson 8 database path is selected by setting `DATABASE_URL`, or by exportin
 # For the local Docker database:
 docker compose up -d postgres
 set -a; source .env.example; set +a
+export JWT_SECRET="replace-with-a-random-secret-of-at-least-32-bytes"
 
 # Or provide DATABASE_URL directly for an existing PostgreSQL server:
 # export DATABASE_URL='postgres://user:password@localhost:5432/database?sslmode=disable'
@@ -115,7 +119,7 @@ migrate -database "${DATABASE_URL:-postgres://$PG_USER:$PG_PASSWORD@$PG_HOST:$PG
 go run ./cmd/api
 ```
 
-The database connection uses a bounded connection pool and GORM SQL logging at `Info` level for local diagnostics. `.env` is not loaded automatically by Go; export it with `set -a; source .env; set +a` before starting the API. The `users` and `games` models/repositories back the HTTP endpoints. `POST /api/v1/users` creates a default regular user, and `GET /api/v1/users` lists users.
+The database connection uses a bounded connection pool and GORM warning-level logging with parameterized query output so credential hashes are not interpolated into SQL logs. `.env` is not loaded automatically by Go; export it with `set -a; source .env; set +a` before starting the API. Apply migration `000003_add_auth_fields` after the original schema. `POST /api/v1/auth/register` creates a regular user; `GET /api/v1/users` lists users only for admins. New admin accounts must be created or promoted by a trusted operator after reviewing the required database operation. One bootstrap procedure is to register the account normally, run `UPDATE users SET role = 'admin' WHERE email = 'admin@example.com';` through a trusted database session, then log in again to obtain a JWT carrying the new role.
 
 Run a single API test stage:
 
@@ -132,24 +136,29 @@ All successful responses except `204 No Content` and all error responses use JSO
 | Method and path | Success | Common errors |
 |---|---|---|
 | `GET /health` | `200` — `{"status":"ok"}` | — |
-| `POST /api/v1/levels` | `201` — created level | `422` validation error |
-| `GET /api/v1/levels` | `200` — array of levels | `400` invalid pagination |
-| `GET /api/v1/levels/{id}` | `200` — level | `400` invalid ID, `404` not found |
-| `PUT /api/v1/levels/{id}` | `200` — updated level | `400` invalid ID, `422` validation error, `404` not found |
-| `DELETE /api/v1/levels/{id}` | `204` — empty body | `400` invalid ID, `404` not found |
-| `POST /api/v1/users` | `201` — default user | `500` internal error |
-| `GET /api/v1/users` | `200` — array of users | `500` internal error |
-| `POST /api/v1/games` | `201` — shuffled game | `409` duplicate game, `422` invalid request |
-| `GET /api/v1/games` | `200` — array of games | `500` internal error |
-| `GET /api/v1/games/{id}` | `200` — game with current board | `400` invalid ID, `404` not found |
-| `POST /api/v1/games/{id}/move` | `200` — updated game | `404` not found, `422` invalid move |
+| `POST /api/v1/auth/register` | `201` — user and JWT | `422` invalid or duplicate registration |
+| `POST /api/v1/auth/login` | `200` — user and JWT | `401` generic invalid credentials |
+| `GET /api/v1/levels` | `200` — public array of levels | `400` invalid pagination |
+| `GET /api/v1/levels/{id}` | `200` — public level | `400` invalid ID, `404` not found |
+| `POST /api/v1/levels` | `201` — created level (admin) | `401` unauthenticated, `403` non-admin, `422` validation error |
+| `PUT /api/v1/levels/{id}` | `200` — updated level (admin) | `401` unauthenticated, `403` non-admin, `404` not found |
+| `DELETE /api/v1/levels/{id}` | `204` — empty body (admin) | `401` unauthenticated, `403` non-admin, `404` not found |
+| `GET /api/v1/users` | `200` — array of users (admin) | `401` unauthenticated, `403` non-admin |
+| `PUT /api/v1/users/{id}/role` | `200` — updated user (admin) | `401` unauthenticated, `403` non-admin, `422` invalid role |
+| `POST /api/v1/games` | `201` — game for token owner | `401` unauthenticated, `409` duplicate, `422` invalid request |
+| `GET /api/v1/games` | `200` — own games; admins see all | `401` unauthenticated |
+| `GET /api/v1/games/{id}` | `200` — own game; admins see all | `401` unauthenticated, `404` not found/not owned |
+| `POST /api/v1/games/{id}/move` | `200` — updated owned game | `401` unauthenticated, `404` not found/not owned, `422` invalid move |
 
 Unknown routes return `404`; unsupported methods are rejected with a client error (`4xx`).
 
 ### Create a level
 
+Level creation, update, and deletion require an admin JWT. Add `Authorization: Bearer $ADMIN_TOKEN` to those requests.
+
 ```bash
 curl -i -X POST http://localhost:8080/api/v1/levels \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
     "title": "Forest Gate",
@@ -177,6 +186,7 @@ curl 'http://localhost:8080/api/v1/levels?page=1&limit=10&difficulty=medium'
 
 ```bash
 curl -i -X PUT http://localhost:8080/api/v1/levels/1 \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
     "title": "Forest Gate — Revised",
@@ -185,24 +195,29 @@ curl -i -X PUT http://localhost:8080/api/v1/levels/1 \
     "difficulty": "hard"
   }'
 
-curl -i -X DELETE http://localhost:8080/api/v1/levels/1
+curl -i -X DELETE http://localhost:8080/api/v1/levels/1 \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
 ### Users and games
 
-Create a default regular user and use its ID with a selected level to start a game:
+Register and log in to receive a Bearer token. The game owner is derived from that token; `user_id` is not accepted in the create-game request. Users can access only their own games, while admins can inspect all games.
 
 ```bash
-user_id=$(curl -s -X POST http://localhost:8080/api/v1/users | jq -r .id)
+curl -s -X POST http://localhost:8080/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"player@example.com","full_name":"Mystic Player","password":"correct-horse-42"}'
+
+# Save the returned token as TOKEN, then:
 level_id=1
 curl -s -X POST http://localhost:8080/api/v1/games \
-  -H 'Content-Type: application/json' \
-  -d "{\"user_id\":$user_id,\"level_id\":$level_id}"
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"level_id\":$level_id}"
 
-curl http://localhost:8080/api/v1/users
-curl http://localhost:8080/api/v1/games
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/v1/games
 curl -X POST http://localhost:8080/api/v1/games/1/move \
-  -H 'Content-Type: application/json' -d '{"row":2,"column":1}'
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"row":2,"column":1}'
 ```
 
 Game creation starts with the ordered board, performs 1,000 legal random adjacent moves, and stores the resulting solvable board in `init`. The response also includes the derived current `board`. Move coordinates are zero-based, and a move must select a tile next to the empty cell (`0`).
@@ -232,14 +247,14 @@ Errors use this general shape and do not expose internal details:
 }
 ```
 
-The API uses codes including `invalid_id`, `invalid_pagination`, `validation_error`, `not_found`, and `internal_server_error`. A recovered panic becomes a generic `500` response; panic details are logged rather than returned to the client.
+The API uses codes including `invalid_id`, `invalid_pagination`, `validation_error`, `not_found`, `unauthorized`, `forbidden`, and `internal_server_error`. Login always returns the same `401` message (`invalid credentials`) for unknown emails and wrong passwords. A recovered panic becomes a generic `500` response; panic details are logged rather than returned to the client.
 
 ### CORS, concurrency, and storage
 
 - Responses include `Access-Control-Allow-Origin`. An `OPTIONS` preflight returns `204` and advertises supported methods, including `POST`.
 - The in-memory repository is safe for concurrent requests.
 - Each call to `app.NewRouter()` gets a new, empty repository; resources are not shared between router instances and are lost when the process exits.
-- When `DATABASE_URL` is set, `cmd/api` uses GORM repositories for levels, users, and games; PostgreSQL migrations must be applied before startup.
+- When `DATABASE_URL` is set, `cmd/api` uses GORM repositories for levels, users, and games; PostgreSQL migrations must be applied before startup. JWT signing requires `JWT_SECRET` from the environment.
 - `games` stores `init` and `moves` as JSONB. `UNIQUE (user_id, level_id)` enforces one game per user and level; game list loading preloads both `Level` and `User` to avoid N+1 queries.
 
 ## 5. Implementation
@@ -254,7 +269,8 @@ internal/repository/         in-memory and GORM repositories plus DB setup
 migrations/                  PostgreSQL schema managed by golang-migrate
 internal/service/            level business operations
 internal/handler/            HTTP endpoints and request/response handling
-internal/middleware/         recovery, request logging, and CORS
+internal/auth/               bcrypt authentication and HS256 JWT validation
+internal/middleware/         recovery, request logging, CORS, authentication and RBAC
 ```
 
 The router is exposed as `app.NewRouter() http.Handler`; `app.NewRouterWithRepositories` is used when persistent repositories are configured. The API uses Gin and concurrency-safe in-memory stores by default, with optional GORM/PostgreSQL stores for all resources. Successful resource operations return the resource itself; errors use the JSON error envelope shown above.
@@ -266,13 +282,14 @@ Release 1 provides:
 - Level creation, retrieval, listing, replacement, and deletion over HTTP.
 - In-memory storage by default, or PostgreSQL persistence for levels, users, and games when `DATABASE_URL` is configured.
 - Generated IDs and timestamps, level input validation, pagination, filtering, and deterministic list order.
-- Default-user creation and listing over HTTP.
+- Public registration with bcrypt password hashing and login with signed 24-hour JWTs.
+- Admin-only user listing and role updates; registration cannot set or elevate a role.
 - Solvable game creation, current-board derivation, legal moves, and win tracking.
 - Recovery, request logging, CORS, and isolation between router instances.
 - PostgreSQL migrations and GORM models/repositories for `Level`, `User`, and `Game`.
 - Database constraints for supported user roles and one game per user/level.
 
-Authentication, authorization middleware, and the browser UI remain outside the current HTTP release. The model layer exposes the admin rule (`User.CanManageLevels`), while enforcement at the HTTP boundary requires authentication identity propagation. Game creation starts from solved order and performs 1,000 legal random adjacent moves, preserving solvability. Move coordinates are zero-based (`row`, `column`); for example, on a 3×3 board `row: 2, column: 1` selects tile 8 when the empty cell is to its right.
+Authentication and authorization middleware protect all game operations and admin-only mutations. The model layer exposes the admin rule (`User.CanManageLevels`), while JWT claims propagate the authenticated identity to handlers. Game creation starts from solved order and performs 1,000 legal random adjacent moves, preserving solvability. Move coordinates are zero-based (`row`, `column`); for example, on a 3×3 board `row: 2, column: 1` selects tile 8 when the empty cell is to its right.
 
 ## 7. Lesson 8 Report
 

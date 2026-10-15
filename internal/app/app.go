@@ -11,6 +11,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 
 	_ "mystic-square/docs" // registers the generated OpenAPI spec
+	"mystic-square/internal/auth"
 	"mystic-square/internal/handler"
 	"mystic-square/internal/middleware"
 	"mystic-square/internal/model"
@@ -60,6 +61,9 @@ func NewRouterWithRepositories(
 	levelHandler := handler.NewLevelHandler(levelService)
 	userHandler := handler.NewUserHandler(userService)
 	gameHandler := handler.NewGameHandler(gameService)
+	jwtSecret := os.Getenv("JWT_SECRET")
+	authService := auth.NewService(userRepository, jwtSecret)
+	authHandler := handler.NewAuthHandler(authService)
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 
 	router := gin.New()
@@ -76,9 +80,18 @@ func NewRouterWithRepositories(
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	api := router.Group("/api/v1")
-	levelHandler.RegisterRoutes(api)
-	userHandler.RegisterRoutes(api)
-	gameHandler.RegisterRoutes(api)
+	public := api.Group("")
+	authHandler.RegisterRoutes(public)
+	levelHandler.RegisterPublicRoutes(public)
+
+	protected := api.Group("")
+	protected.Use(middleware.AuthMiddleware(jwtSecret))
+	gameHandler.RegisterRoutes(protected)
+
+	admin := protected.Group("")
+	admin.Use(middleware.RequireRole(string(model.UserRoleAdmin)))
+	levelHandler.RegisterAdminRoutes(admin)
+	userHandler.RegisterRoutes(admin)
 
 	router.NoRoute(func(c *gin.Context) {
 		c.JSON(http.StatusNotFound, model.NewErrorResponse("not_found", "route not found"))

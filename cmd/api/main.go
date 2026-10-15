@@ -20,6 +20,10 @@ import (
 // @host			localhost:8080
 // @BasePath		/api/v1
 func main() {
+	if len([]byte(os.Getenv("JWT_SECRET"))) < 32 {
+		log.Fatal("JWT_SECRET must be set to at least 32 bytes")
+	}
+
 	addr := ":8080"
 	if port := os.Getenv("PORT"); port != "" {
 		addr = ":" + port

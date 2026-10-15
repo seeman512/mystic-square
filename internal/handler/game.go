@@ -36,10 +36,9 @@ func (h *GameHandler) RegisterRoutes(router *gin.RouterGroup) {
 
 type createGameRequest struct {
 	LevelID uint64 `json:"level_id"`
-	UserID  uint64 `json:"user_id"`
 }
 
-// Create handles POST /games. The request selects an existing level and user.
+// Create handles POST /games. The request selects a level; the authenticated identity owns the game.
 //
 // @Summary Create a game
 // @Tags games
@@ -51,17 +50,22 @@ type createGameRequest struct {
 // @Failure 422 {object} model.ErrorResponse
 // @Router /games [post]
 func (h *GameHandler) Create(c *gin.Context) {
+	userID, ok := authenticatedUserID(c)
+	if !ok {
+		writeError(c, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
 	var input createGameRequest
-	if err := decodeJSON(c.Request.Body, &input); err != nil {
+	if err := decodeStrictJSON(c.Request.Body, &input); err != nil {
 		writeError(c, http.StatusUnprocessableEntity, "validation_error", "invalid game payload")
 		return
 	}
-	if input.LevelID == 0 || input.UserID == 0 {
-		writeError(c, http.StatusUnprocessableEntity, "validation_error", "level_id and user_id are required")
+	if input.LevelID == 0 {
+		writeError(c, http.StatusUnprocessableEntity, "validation_error", "level_id is required")
 		return
 	}
 
-	game, err := h.service.Create(c.Request.Context(), input.UserID, input.LevelID)
+	game, err := h.service.Create(c.Request.Context(), userID, input.LevelID)
 	if err != nil {
 		handleGameServiceError(c, err)
 		return
@@ -82,6 +86,20 @@ func (h *GameHandler) List(c *gin.Context) {
 	if err != nil {
 		handleGameServiceError(c, err)
 		return
+	}
+	if !isAdmin(c) {
+		userID, ok := authenticatedUserID(c)
+		if !ok {
+			writeError(c, http.StatusUnauthorized, "unauthorized", "authentication required")
+			return
+		}
+		owned := make([]model.Game, 0, len(games))
+		for _, game := range games {
+			if game.UserID == userID {
+				owned = append(owned, game)
+			}
+		}
+		games = owned
 	}
 	c.JSON(http.StatusOK, games)
 }
@@ -105,6 +123,10 @@ func (h *GameHandler) Get(c *gin.Context) {
 	game, err := h.service.Get(c.Request.Context(), id)
 	if err != nil {
 		handleGameServiceError(c, err)
+		return
+	}
+	if !canAccessGame(c, game) {
+		writeError(c, http.StatusNotFound, "not_found", "game not found")
 		return
 	}
 	c.JSON(http.StatusOK, game)
@@ -136,6 +158,16 @@ func (h *GameHandler) Move(c *gin.Context) {
 		return
 	}
 
+	game, err := h.service.Get(c.Request.Context(), id)
+	if err != nil {
+		handleGameServiceError(c, err)
+		return
+	}
+	if !canAccessGame(c, game) {
+		writeError(c, http.StatusNotFound, "not_found", "game not found")
+		return
+	}
+
 	var input moveRequest
 	if err := decodeJSON(c.Request.Body, &input); err != nil {
 		writeError(c, http.StatusUnprocessableEntity, "validation_error", "row and column are required")
@@ -152,12 +184,33 @@ func (h *GameHandler) Move(c *gin.Context) {
 		return
 	}
 
-	game, err := h.service.Move(c.Request.Context(), id, move)
+	game, err = h.service.Move(c.Request.Context(), id, move)
 	if err != nil {
 		handleGameServiceError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, game)
+}
+
+func authenticatedUserID(c *gin.Context) (uint64, bool) {
+	value, exists := c.Get("user_id")
+	if !exists {
+		return 0, false
+	}
+	id, ok := value.(uint64)
+	return id, ok && id > 0
+}
+
+func isAdmin(c *gin.Context) bool {
+	return c.GetString("role") == string(model.UserRoleAdmin)
+}
+
+func canAccessGame(c *gin.Context, game model.Game) bool {
+	if isAdmin(c) {
+		return true
+	}
+	userID, ok := authenticatedUserID(c)
+	return ok && userID == game.UserID
 }
 
 func handleGameServiceError(c *gin.Context, err error) {

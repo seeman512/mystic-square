@@ -14,11 +14,13 @@ const (
 
 // User is an authenticated Mystic Square player or administrator.
 type User struct {
-	ID        uint64    `json:"id" gorm:"primaryKey" example:"1"`
-	FullName  string    `json:"full_name" gorm:"not null" example:"Ada Lovelace"`
-	Role      UserRole  `json:"role" gorm:"not null" example:"user"`
-	CreatedAt time.Time `json:"created_at" gorm:"not null"`
-	UpdatedAt time.Time `json:"updated_at" gorm:"not null"`
+	ID           uint64    `json:"id" gorm:"primaryKey" example:"1"`
+	Email        string    `json:"email" gorm:"not null;uniqueIndex" example:"ada@example.com"`
+	FullName     string    `json:"full_name" gorm:"not null" example:"Ada Lovelace"`
+	PasswordHash string    `json:"-" gorm:"column:password_hash;not null"`
+	Role         UserRole  `json:"role" gorm:"not null" example:"user"`
+	CreatedAt    time.Time `json:"created_at" gorm:"not null"`
+	UpdatedAt    time.Time `json:"updated_at" gorm:"not null"`
 }
 
 // CanManageLevels reports whether the user may create or modify levels.

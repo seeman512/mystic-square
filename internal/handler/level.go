@@ -27,14 +27,27 @@ func NewLevelHandler(levelService service.LevelService) *LevelHandler {
 	return &LevelHandler{service: levelService}
 }
 
-// RegisterRoutes registers the level resource routes on router.
-func (h *LevelHandler) RegisterRoutes(router *gin.RouterGroup) {
+// RegisterPublicRoutes registers read-only level endpoints.
+func (h *LevelHandler) RegisterPublicRoutes(router *gin.RouterGroup) {
 	levels := router.Group("/levels")
-	levels.POST("", h.Create)
 	levels.GET("", h.List)
 	levels.GET("/:id", h.Get)
+}
+
+// RegisterAdminRoutes registers level mutations for an administrator route group.
+func (h *LevelHandler) RegisterAdminRoutes(router *gin.RouterGroup) {
+	levels := router.Group("/levels")
+	levels.POST("", h.Create)
 	levels.PUT("/:id", h.Update)
 	levels.DELETE("/:id", h.Delete)
+}
+
+// RegisterRoutes registers every level endpoint without applying authorization.
+// Applications should prefer the public/admin registration methods and attach
+// middleware to each route group.
+func (h *LevelHandler) RegisterRoutes(router *gin.RouterGroup) {
+	h.RegisterPublicRoutes(router)
+	h.RegisterAdminRoutes(router)
 }
 
 // Create handles POST /levels.
