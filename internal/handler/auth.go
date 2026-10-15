@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -13,7 +14,12 @@ import (
 	"mystic-square/internal/repository"
 )
 
-const maxAuthRequestSize = 1 << 20
+const (
+	maxAuthRequestSize = 1 << 20
+
+	registrationPayloadRules = "required fields: email (valid email address), full_name (1-200 characters), and password (8-72 characters); unknown fields are not allowed"
+	loginPayloadRules        = "required fields: email (valid email address) and password (non-empty); unknown fields are not allowed"
+)
 
 // AuthHandler exposes public registration and login endpoints.
 type AuthHandler struct {
@@ -63,14 +69,14 @@ type authResponse struct {
 func (h *AuthHandler) Register(c *gin.Context) {
 	var input RegisterRequest
 	if err := decodeStrictJSON(c.Request.Body, &input); err != nil {
-		writeError(c, http.StatusUnprocessableEntity, "validation_error", "invalid registration payload")
+		writeError(c, http.StatusUnprocessableEntity, "validation_error", authPayloadMessage("registration", err))
 		return
 	}
 	user, token, err := h.service.Register(c.Request.Context(), input.Email, input.FullName, input.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, auth.ErrInvalidRegistration):
-			writeError(c, http.StatusUnprocessableEntity, "validation_error", "invalid registration payload")
+			writeError(c, http.StatusUnprocessableEntity, "validation_error", authPayloadMessage("registration", nil))
 		case errors.Is(err, repository.ErrConflict):
 			writeError(c, http.StatusUnprocessableEntity, "validation_error", "email is already registered")
 		case errors.Is(err, auth.ErrInvalidSecret):
@@ -98,12 +104,14 @@ func (h *AuthHandler) Register(c *gin.Context) {
 func (h *AuthHandler) Login(c *gin.Context) {
 	var input LoginRequest
 	if err := decodeStrictJSON(c.Request.Body, &input); err != nil {
-		writeError(c, http.StatusUnprocessableEntity, "validation_error", "invalid login payload")
+		writeError(c, http.StatusUnprocessableEntity, "validation_error", authPayloadMessage("login", err))
 		return
 	}
 	user, token, err := h.service.Login(c.Request.Context(), input.Email, input.Password)
 	if err != nil {
 		switch {
+		case errors.Is(err, auth.ErrInvalidLogin):
+			writeError(c, http.StatusUnprocessableEntity, "validation_error", authPayloadMessage("login", nil))
 		case errors.Is(err, auth.ErrInvalidCredentials):
 			writeError(c, http.StatusUnauthorized, "invalid_credentials", "invalid credentials")
 		case errors.Is(err, auth.ErrInvalidSecret):
@@ -130,4 +138,34 @@ func decodeStrictJSON(reader io.Reader, value any) error {
 		return err
 	}
 	return nil
+}
+
+func authPayloadMessage(kind string, decodeErr error) string {
+	base := "invalid " + kind + " payload"
+	rules := registrationPayloadRules
+	if kind == "login" {
+		rules = loginPayloadRules
+	}
+
+	if decodeErr == nil {
+		return base + ": " + rules
+	}
+
+	detail := "request body must be valid JSON"
+	switch {
+	case errors.Is(decodeErr, io.EOF):
+		detail = "request body is required"
+	case errors.Is(decodeErr, io.ErrUnexpectedEOF):
+		detail = "request body must be complete valid JSON"
+	case strings.Contains(decodeErr.Error(), "unknown field"):
+		detail = "request contains an unknown field"
+	case isJSONTypeError(decodeErr):
+		detail = "request fields have invalid types"
+	}
+	return base + ": " + detail + "; " + rules
+}
+
+func isJSONTypeError(err error) bool {
+	var typeErr *json.UnmarshalTypeError
+	return errors.As(err, &typeErr)
 }

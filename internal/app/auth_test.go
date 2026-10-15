@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"mystic-square/internal/model"
@@ -44,6 +45,40 @@ func TestAuthenticationContracts(t *testing.T) {
 	e.expect(unknownEmail, http.StatusUnauthorized)
 	if wrongPassword.text() != unknownEmail.text() || wrongPassword.text() != `{"error":{"code":"invalid_credentials","message":"invalid credentials"}}` {
 		t.Fatalf("login failures differ or are not generic: wrong=%s unknown=%s", wrongPassword.text(), unknownEmail.text())
+	}
+}
+
+func TestAuthPayloadErrorsDescribeRequirements(t *testing.T) {
+	e := newEnv(t)
+
+	tests := []struct {
+		name string
+		path string
+		want []string
+	}{
+		{
+			name: "registration",
+			path: "/api/v1/auth/register",
+			want: []string{"email", "full_name", "password", "1-200", "8-72"},
+		},
+		{
+			name: "login",
+			path: "/api/v1/auth/login",
+			want: []string{"email", "password", "non-empty"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := e.do(http.MethodPost, test.path, `{}`)
+			e.expect(response, http.StatusUnprocessableEntity)
+			message := response.obj(t)["error"].(map[string]any)["message"].(string)
+			for _, fragment := range test.want {
+				if !strings.Contains(message, fragment) {
+					t.Errorf("validation message %q does not contain %q", message, fragment)
+				}
+			}
+		})
 	}
 }
 

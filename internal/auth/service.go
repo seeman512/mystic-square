@@ -18,13 +18,23 @@ import (
 // TokenLifetime is the validity period for issued authentication tokens.
 const TokenLifetime = 24 * time.Hour
 
-const minPasswordLength = 8
+const (
+	minPasswordLength = 8
+	maxPasswordLength = 72 // bcrypt only uses the first 72 bytes of a password.
+	maxFullNameLength = 200
+
+	// dummyPasswordHash is used for password verification when an email is not
+	// registered. It has the same bcrypt cost as hashes created by Register.
+	dummyPasswordHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+)
 
 var (
 	// ErrInvalidCredentials is returned for either an unknown email or bad password.
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	// ErrInvalidRegistration indicates invalid user-supplied registration data.
 	ErrInvalidRegistration = errors.New("invalid registration")
+	// ErrInvalidLogin indicates that the login payload does not meet its input rules.
+	ErrInvalidLogin = errors.New("invalid login payload")
 	// ErrInvalidSecret indicates that JWT_SECRET is missing or too short.
 	ErrInvalidSecret = errors.New("JWT_SECRET must contain at least 32 bytes")
 )
@@ -47,8 +57,8 @@ func (s *Service) Register(ctx context.Context, email, fullName, password string
 	email = strings.ToLower(strings.TrimSpace(email))
 	fullName = strings.TrimSpace(fullName)
 	parsedEmail, err := mail.ParseAddress(email)
-	if err != nil || parsedEmail.Address != email || fullName == "" || len(fullName) > 200 ||
-		len(password) < minPasswordLength || len(password) > 72 {
+	if err != nil || parsedEmail.Address != email || fullName == "" || len(fullName) > maxFullNameLength ||
+		len(password) < minPasswordLength || len(password) > maxPasswordLength {
 		return model.User{}, "", ErrInvalidRegistration
 	}
 	if err := validateSecret(s.secret); err != nil {
@@ -85,9 +95,17 @@ func (s *Service) Login(ctx context.Context, email, password string) (model.User
 		return model.User{}, "", err
 	}
 	email = strings.ToLower(strings.TrimSpace(email))
+	parsedEmail, err := mail.ParseAddress(email)
+	if err != nil || parsedEmail.Address != email || password == "" {
+		return model.User{}, "", ErrInvalidLogin
+	}
+
 	user, err := s.users.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
+			// Always perform a bcrypt comparison, even when the account does not
+			// exist, so this path has comparable password-work to a real account.
+			_ = bcrypt.CompareHashAndPassword([]byte(dummyPasswordHash), []byte(password))
 			return model.User{}, "", ErrInvalidCredentials
 		}
 		return model.User{}, "", fmt.Errorf("lookup login user: %w", err)
