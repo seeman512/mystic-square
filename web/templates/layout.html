@@ -1,0 +1,42 @@
+{{define "layout"}}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{.Title}} | Mystic Square</title>
+    <link rel="stylesheet" href="/static/css/bootstrap.min.css">
+    <script src="/static/js/htmx.min.js" defer></script>
+    <script src="/static/js/app.js" defer></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            if (window.htmx) {
+                window.htmx.config.historyRestoreAsHxRequest = false;
+                // Swap validation and server-error fragments into the form
+                // target instead of leaving an HTMX request with no feedback.
+                window.htmx.config.responseHandling = [
+                    {code: "204", swap: false},
+                    {code: "422", swap: true},
+                    {code: "[23]..", swap: true},
+                    {code: "[45]..", swap: true, error: true}
+                ];
+            }
+        });
+    </script>
+</head>
+<body class="bg-light d-flex flex-column min-vh-100">
+    {{template "header" .}}
+    <main class="flex-grow-1">
+        {{block "content" .}}
+        <section class="container py-5">
+            <div class="alert alert-danger" role="alert">
+                <h1 class="h4">{{.Title}}</h1>
+                <p class="mb-0">{{.Error}}</p>
+            </div>
+        </section>
+        {{end}}
+    </main>
+    {{template "footer" .}}
+</body>
+</html>
+{{end}}

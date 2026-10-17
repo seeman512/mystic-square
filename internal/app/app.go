@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -17,6 +19,7 @@ import (
 	"mystic-square/internal/model"
 	"mystic-square/internal/repository"
 	"mystic-square/internal/service"
+	"mystic-square/web"
 )
 
 // NewRouter returns a fully configured HTTP handler with fresh in-memory storage.
@@ -65,6 +68,14 @@ func NewRouterWithRepositories(
 	authService := auth.NewService(userRepository, jwtSecret)
 	authHandler := handler.NewAuthHandler(authService)
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	webHandler, err := web.NewHandler(authService, userRepository, web.Config{
+		JWTSecret:    jwtSecret,
+		SecureCookie: webCookieSecure(),
+		Logger:       logger,
+	})
+	if err != nil {
+		panic(err)
+	}
 
 	router := gin.New()
 	router.Use(
@@ -93,6 +104,18 @@ func NewRouterWithRepositories(
 	levelHandler.RegisterAdminRoutes(admin)
 	userHandler.RegisterRoutes(admin)
 
+	// The web UI has its own cookie-based authentication layer. It is mounted
+	// separately from the API so Bearer-token middleware and JSON contracts are
+	// unchanged.
+	router.GET("/login", gin.WrapH(webHandler))
+	router.POST("/login", gin.WrapH(webHandler))
+	router.GET("/register", gin.WrapH(webHandler))
+	router.POST("/register", gin.WrapH(webHandler))
+	router.GET("/welcome", gin.WrapH(webHandler))
+	router.GET("/logout", gin.WrapH(webHandler))
+	router.POST("/logout", gin.WrapH(webHandler))
+	router.GET("/static/*path", gin.WrapH(webHandler))
+
 	router.NoRoute(func(c *gin.Context) {
 		c.JSON(http.StatusNotFound, model.NewErrorResponse("not_found", "route not found"))
 	})
@@ -100,4 +123,15 @@ func NewRouterWithRepositories(
 		c.JSON(http.StatusMethodNotAllowed, model.NewErrorResponse("method_not_allowed", "method not allowed"))
 	})
 	return router
+}
+
+func webCookieSecure() bool {
+	if value := os.Getenv("WEB_COOKIE_SECURE"); value != "" {
+		secure, err := strconv.ParseBool(value)
+		if err == nil {
+			return secure
+		}
+	}
+	appEnvironment := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
+	return appEnvironment == "production" || appEnvironment == "prod"
 }

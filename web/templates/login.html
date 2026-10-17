@@ -1,0 +1,36 @@
+{{define "content"}}
+<section class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-12 col-md-8 col-lg-5">
+            {{template "login-form" .}}
+        </div>
+    </div>
+</section>
+{{end}}
+
+{{define "login-form"}}
+<div id="login-panel" class="card shadow-sm">
+    <div class="card-body p-4">
+        <h1 class="card-title h3 mb-4">Login</h1>
+        {{if .Errors}}
+        <div class="alert alert-danger" role="alert" aria-live="polite">
+            <ul class="mb-0">
+                {{range .Errors}}<li>{{.}}</li>{{end}}
+            </ul>
+        </div>
+        {{end}}
+        <form method="post" action="/login" hx-post="/login" hx-ext="json-enc" hx-target="#login-panel" hx-swap="outerHTML" data-json-form>
+            <div class="mb-3">
+                <label for="login-email" class="form-label">Email</label>
+                <input id="login-email" class="form-control" name="email" type="email" value="{{.Email}}" required autocomplete="email">
+            </div>
+            <div class="mb-3">
+                <label for="login-password" class="form-label">Password</label>
+                <input id="login-password" class="form-control" name="password" type="password" required autocomplete="current-password">
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Login</button>
+        </form>
+        <p class="text-center mb-0 mt-4">Don't have an account? <a href="/register">Register</a>.</p>
+    </div>
+</div>
+{{end}}

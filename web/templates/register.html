@@ -1,0 +1,40 @@
+{{define "content"}}
+<section class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-12 col-md-9 col-lg-6">
+            {{template "register-form" .}}
+        </div>
+    </div>
+</section>
+{{end}}
+
+{{define "register-form"}}
+<div id="register-panel" class="card shadow-sm">
+    <div class="card-body p-4">
+        <h1 class="card-title h3 mb-4">Create an account</h1>
+        {{if .Errors}}
+        <div class="alert alert-danger" role="alert" aria-live="polite">
+            <ul class="mb-0">
+                {{range .Errors}}<li>{{.}}</li>{{end}}
+            </ul>
+        </div>
+        {{end}}
+        <form method="post" action="/register" hx-post="/register" hx-ext="json-enc" hx-target="#register-panel" hx-swap="outerHTML" data-json-form>
+            <div class="mb-3">
+                <label for="register-name" class="form-label">Full name</label>
+                <input id="register-name" class="form-control" name="full_name" type="text" value="{{.FullNameInput}}" required autocomplete="name">
+            </div>
+            <div class="mb-3">
+                <label for="register-email" class="form-label">Email</label>
+                <input id="register-email" class="form-control" name="email" type="email" value="{{.Email}}" required autocomplete="email">
+            </div>
+            <div class="mb-3">
+                <label for="register-password" class="form-label">Password</label>
+                <input id="register-password" class="form-control" name="password" type="password" required autocomplete="new-password">
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Register</button>
+        </form>
+        <p class="text-center mb-0 mt-4">Already have an account? <a href="/login">Login</a>.</p>
+    </div>
+</div>
+{{end}}
