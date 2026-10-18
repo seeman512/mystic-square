@@ -121,8 +121,8 @@ func TestLevelInputValidateAllowsOmittedLimits(t *testing.T) {
 	if got := level.EffectiveTimeLimit(); got != -1 {
 		t.Errorf("EffectiveTimeLimit() = %d, want -1 for an omitted limit", got)
 	}
-	if got := level.EffectiveMoveLimit(); got != -1 {
-		t.Errorf("EffectiveMoveLimit() = %d, want -1 for an omitted limit", got)
+	if got := level.EffectiveMoveLimit(); got != DefaultMoveLimit {
+		t.Errorf("EffectiveMoveLimit() = %d, want %d for an omitted limit", got, DefaultMoveLimit)
 	}
 
 	timeLimit, moveLimit := 120, 50

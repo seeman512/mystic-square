@@ -16,7 +16,9 @@ const (
 )
 
 const (
-	unlimitedLimit       = -1
+	unlimitedLimit = -1
+	// DefaultMoveLimit is the maximum moves used when a level has no finite limit.
+	DefaultMoveLimit     = 10000
 	defaultGridDimension = 4
 	legacyTheme          = "classic"
 	legacyObjective      = "solve the puzzle"
@@ -48,10 +50,11 @@ func (level Level) EffectiveTimeLimit() int {
 	return *level.TimeLimit
 }
 
-// EffectiveMoveLimit returns the configured move limit, or -1 when unlimited.
+// EffectiveMoveLimit returns the configured move limit, or the application
+// default when the level omits a limit or stores -1.
 func (level Level) EffectiveMoveLimit() int {
-	if level.MoveLimit == nil {
-		return unlimitedLimit
+	if level.MoveLimit == nil || *level.MoveLimit == unlimitedLimit {
+		return DefaultMoveLimit
 	}
 	return *level.MoveLimit
 }

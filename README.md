@@ -66,7 +66,7 @@ The product defines two roles:
 | `admin` | Browse and play levels; create/update/delete levels; list users and update roles. |
 | `user` | Browse and play levels; cannot create levels. |
 
-The server enforces these permissions at the HTTP boundary. A `user` can play games but cannot create or modify levels. Release 1 does not include the browser UI.
+The server enforces these permissions at the HTTP boundary. A `user` can play games but cannot create or modify levels. The authenticated browser UI is served at `/game` and uses the same game services with an HttpOnly session cookie.
 
 ### Puzzle rules and player flow
 
@@ -90,7 +90,7 @@ The `levels` variant is defined by `internal/app/variants_test.go`. Its four req
 | `theme` | string | Required | Setting or theme, such as a forest or space station. |
 | `objective` | string | Required | What the player must accomplish. |
 | `difficulty` | string | Required | Difficulty label; this is also the list-filter field. The project defines `low`, `medium`, or `hard` as its difficulty values. Release 1 currently checks that this field is not blank but does not enforce the enum. |
-| `move_limit` | integer | Optional | Maximum permitted moves; `-1` means unlimited. |
+| `move_limit` | integer | Optional | Maximum permitted moves; omitted or `-1` uses the default maximum of `10000`. |
 | `description` | string | Optional | Additional details or instructions. |
 
 Required strings must be present and must not be blank. The optional fields may be omitted; in API responses they remain present as `null` when unset. When supplied, `move_limit` must be an integer, not a fractional number or another JSON type.
@@ -106,7 +106,7 @@ The puzzle domain also has these configuration and system-managed fields:
 | `created_at` | timestamp | Assigned by the service | Creation time in RFC 3339 format. |
 | `updated_at` | timestamp | Assigned by the service | Creation time, refreshed when the resource is updated. |
 
-`move_limit` may be from `-1` through `10000`; only `-1` means unlimited, while `0` is a configured limit. `time_limit` follows the same unlimited convention. An omitted limit is represented as `null` in the resource, and is treated as unlimited by the level model.
+`move_limit` may be from `-1` through `10000`; `0` is a configured limit, while an omitted value or `-1` uses the default maximum of `10000` for game sessions. `time_limit` continues to use the unlimited convention. An omitted move limit is represented as `null` in the resource.
 
 A level response has this shape (timestamps and ID are examples):
 
@@ -170,7 +170,7 @@ migrate -database "${DATABASE_URL:-postgres://$PG_USER:$PG_PASSWORD@$PG_HOST:$PG
 go run ./cmd/api
 ```
 
-The database connection uses a bounded connection pool and GORM warning-level logging with parameterized query output so credential hashes are not interpolated into SQL logs. `.env` is not loaded automatically by Go; export it with `set -a; source .env; set +a` before starting the API. Apply migration `000003_add_auth_fields` after the original schema. `POST /api/v1/auth/register` creates a regular user; `GET /api/v1/users` lists users only for admins. New admin accounts must be created or promoted by a trusted operator after reviewing the required database operation. One bootstrap procedure is to register the account normally, run `UPDATE users SET role = 'admin' WHERE email = 'admin@example.com';` through a trusted database session, then log in again to obtain a JWT carrying the new role.
+The database connection uses a bounded connection pool and GORM warning-level logging with parameterized query output so credential hashes are not interpolated into SQL logs. `.env` is not loaded automatically by Go; export it with `set -a; source .env; set +a` before starting the API. Apply all migrations, including `000003_add_auth_fields`, the default-level seed, and game tracking fields, before starting the API. `POST /api/v1/auth/register` creates a regular user; `GET /api/v1/users` lists users only for admins. New admin accounts must be created or promoted by a trusted operator after reviewing the required database operation. One bootstrap procedure is to register the account normally, run `UPDATE users SET role = 'admin' WHERE email = 'admin@example.com';` through a trusted database session, then log in again to obtain a JWT carrying the new role.
 
 Run a single API test stage:
 
@@ -306,7 +306,7 @@ The API uses codes including `invalid_id`, `invalid_pagination`, `validation_err
 - The in-memory repository is safe for concurrent requests.
 - Each call to `app.NewRouter()` gets a new, empty repository; resources are not shared between router instances and are lost when the process exits.
 - When `DATABASE_URL` is set, `cmd/api` uses GORM repositories for levels, users, and games; PostgreSQL migrations must be applied before startup. JWT signing requires `JWT_SECRET` from the environment.
-- `games` stores `init` and `moves` as JSONB. `UNIQUE (user_id, level_id)` enforces one game per user and level; game list loading preloads both `Level` and `User` to avoid N+1 queries.
+- `games` stores `init` and `moves` as JSONB. `UNIQUE (user_id, level_id)` enforces one game per user and level; tracking timestamps and terminal state support the browser game's elapsed-time and ordering views.
 
 ## 5. Implementation
 
@@ -335,7 +335,7 @@ Release 1 provides:
 - Generated IDs and timestamps, level input validation, pagination, filtering, and deterministic list order.
 - Public registration with bcrypt password hashing and login with signed 24-hour JWTs.
 - Admin-only user listing and role updates; registration cannot set or elevate a role.
-- Solvable game creation, current-board derivation, legal moves, and win tracking.
+- Solvable game creation, current-board derivation, legal moves, win tracking, and the authenticated three-panel browser game page.
 - Recovery, request logging, CORS, and isolation between router instances.
 - PostgreSQL migrations and GORM models/repositories for `Level`, `User`, and `Game`.
 - Database constraints for supported user roles and one game per user/level.
@@ -358,8 +358,8 @@ down migrations. Use ON DELETE RESTRICT for level references and ON DELETE CASCA
 for user-owned games. Do not use GORM AutoMigrate.
 ```
 
-The stored migrations are `migrations/000001_create_levels.*.sql` and
-`migrations/000002_create_users_and_games.*.sql`. `JSONB` was chosen instead of a
+The stored migrations include the level, user/game, authentication, default-level,
+and game-tracking migrations under `migrations/`. `JSONB` was chosen instead of a
 fixed-size PostgreSQL array because level dimensions are configurable and moves are
 pairs of coordinates.
 

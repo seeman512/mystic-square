@@ -233,6 +233,8 @@ func handleGameServiceError(c *gin.Context, err error) {
 		writeError(c, http.StatusUnprocessableEntity, "invalid_move", "move must select a tile adjacent to the empty cell")
 	case errors.Is(err, service.ErrGameFinished):
 		writeError(c, http.StatusConflict, "game_finished", "game has already been won")
+	case errors.Is(err, service.ErrGameOver):
+		writeError(c, http.StatusConflict, "game_over", "game has reached its move limit")
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		writeError(c, http.StatusInternalServerError, "internal_server_error", "internal server error")
 	default:

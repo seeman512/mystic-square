@@ -1,0 +1,151 @@
+{{define "content"}}
+<section id="game-layout" class="container-fluid py-4">
+    <div class="row g-4 align-items-start">
+        {{template "levels-panel" .}}
+        {{template "game-panel" .}}
+        {{template "games-panel" .}}
+    </div>
+</section>
+{{end}}
+
+{{define "levels-panel"}}
+<section id="levels-panel" class="col-12 col-xl-3" aria-labelledby="levels-heading">
+    <div class="card shadow-sm game-side-panel">
+        <div class="card-body">
+            <h2 id="levels-heading" class="h4">Levels</h2>
+            <p class="text-muted small">Choose a level to start a puzzle.</p>
+            <div class="game-panel-scroll">
+                {{if .Levels}}
+                <div class="vstack gap-3">
+                    {{range .Levels}}
+                    <article class="border rounded p-3">
+                        <h3 class="h6 mb-1">{{.Title}}</h3>
+                        <p class="small text-muted mb-2">
+                            {{.Difficulty}} · {{.Rows}} × {{.Columns}} · {{.MoveLimitLabel}}
+                        </p>
+                        <form method="post" action="/game/start" hx-post="/game/start" hx-target="#game-panel" hx-swap="outerHTML">
+                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                            <input type="hidden" name="level_id" value="{{.ID}}">
+                            <button type="submit" class="btn btn-primary btn-sm w-100">Start Game</button>
+                        </form>
+                    </article>
+                    {{end}}
+                </div>
+                {{else}}
+                <p class="text-muted mb-0">No levels are available.</p>
+                {{end}}
+            </div>
+        </div>
+    </div>
+</section>
+{{end}}
+
+{{define "game-panel"}}
+<section id="game-panel" class="col-12 col-xl-6" aria-labelledby="current-game-heading">
+    <div class="card shadow-sm">
+        <div class="card-body p-3 p-md-4">
+            {{if .GameError}}
+            <div class="alert alert-danger" role="alert" aria-live="assertive">{{.GameError}}</div>
+            {{end}}
+            {{if .GameNotice}}
+            <div class="alert alert-info" role="status">{{.GameNotice}}</div>
+            {{end}}
+            {{if .SelectedGame}}
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                <div>
+                    <h1 id="current-game-heading" class="h3 mb-1">{{.SelectedGame.LevelTitle}}</h1>
+                    <p class="text-muted mb-0">{{.SelectedGame.Difficulty}} · {{.SelectedGame.Rows}} × {{.SelectedGame.Columns}}</p>
+                </div>
+                <div class="text-md-end small">
+                    <div><strong>{{.SelectedGame.Moves}} / {{.SelectedGame.MaxMoves}}</strong> moves</div>
+                    <time>{{.SelectedGame.Elapsed}}</time> elapsed
+                </div>
+            </div>
+            {{if eq .SelectedGame.Status "Completed"}}
+            <div class="alert alert-success" role="status">Success! You solved this puzzle.</div>
+            {{else if eq .SelectedGame.Status "Game over"}}
+            <div class="alert alert-warning" role="alert">Game over. The move limit has been reached.</div>
+            {{else if .SelectedGame.Message}}
+            <div class="alert alert-info" role="status">{{.SelectedGame.Message}}</div>
+            {{end}}
+            <div class="table-responsive" aria-label="Puzzle board">
+                <table class="table table-bordered text-center align-middle game-board mb-0">
+                    <tbody>
+                        {{range .SelectedGame.BoardRows}}
+                        <tr>
+                            {{range .}}
+                            <td class="game-cell{{if .Empty}} game-cell-empty{{end}}">
+                                {{if .Movable}}
+                                <form method="post" action="/game/{{$.SelectedGame.ID}}/move" hx-post="/game/{{$.SelectedGame.ID}}/move" hx-target="#game-panel" hx-swap="outerHTML">
+                                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                    <input type="hidden" name="row" value="{{.Row}}">
+                                    <input type="hidden" name="column" value="{{.Column}}">
+                                    <button type="submit" class="btn btn-outline-primary game-tile" aria-label="{{.AriaLabel}}">{{.Value}}</button>
+                                </form>
+                                {{else if .Empty}}
+                                <span class="game-empty" aria-label="{{.AriaLabel}}"></span>
+                                {{else}}
+                                <span class="game-tile-static" aria-label="{{.AriaLabel}}">{{.Value}}</span>
+                                {{end}}
+                            </td>
+                            {{end}}
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+            {{else}}
+            <div class="text-center py-5">
+                <h1 id="current-game-heading" class="h3">Your game</h1>
+                <p class="text-muted mb-0">Choose a level to start a game or continue one of your games.</p>
+            </div>
+            {{end}}
+        </div>
+    </div>
+</section>
+{{end}}
+
+{{define "games-panel"}}
+<section id="games-panel" class="col-12 col-xl-3" aria-labelledby="my-games-heading">
+    {{template "games-panel-content" .}}
+</section>
+{{end}}
+
+{{define "games-panel-content"}}
+<div class="card shadow-sm game-side-panel">
+    <div class="card-body">
+        <h2 id="my-games-heading" class="h4">My games</h2>
+        <div class="game-panel-scroll">
+            {{if .Games}}
+            <div class="vstack gap-3">
+                {{range .Games}}
+                <article class="border rounded p-3{{if .Selected}} border-primary{{end}}">
+                    <h3 class="h6 mb-1">{{.LevelTitle}}</h3>
+                    <p class="small text-muted mb-2">{{.Rows}} × {{.Columns}}</p>
+                    <div class="d-flex justify-content-between small mb-2">
+                        <span>{{.Status}}</span>
+                        <span>{{.Moves}} moves</span>
+                    </div>
+                    <p class="small text-muted mb-2">{{.Elapsed}} elapsed</p>
+                    {{if .CanContinue}}
+                    <a class="btn btn-outline-primary btn-sm w-100" href="/game?game_id={{.ID}}" hx-get="/game?game_id={{.ID}}" hx-target="#game-panel" hx-swap="outerHTML">Continue</a>
+                    {{else}}
+                    <a class="btn btn-outline-secondary btn-sm w-100" href="/game?game_id={{.ID}}" hx-get="/game?game_id={{.ID}}" hx-target="#game-panel" hx-swap="outerHTML">View</a>
+                    {{end}}
+                </article>
+                {{end}}
+            </div>
+            {{else}}
+            <p class="text-muted mb-0">You have no games yet.</p>
+            {{end}}
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "game-response"}}
+{{template "game-panel" .}}
+<section id="games-panel" hx-swap-oob="outerHTML" class="col-12 col-xl-3" aria-labelledby="my-games-heading">
+    {{template "games-panel-content" .}}
+</section>
+{{end}}

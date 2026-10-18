@@ -10,6 +10,7 @@ import (
 
 	"mystic-square/internal/auth"
 	"mystic-square/internal/repository"
+	"mystic-square/internal/service"
 )
 
 const testSecret = "web-test-secret-that-is-at-least-32-bytes-long"
@@ -17,8 +18,13 @@ const testSecret = "web-test-secret-that-is-at-least-32-bytes-long"
 func newTestHandler(t *testing.T) *Handler {
 	t.Helper()
 	users := repository.NewInMemoryUserRepository()
-	service := auth.NewService(users, testSecret)
-	h, err := NewHandler(service, users, Config{
+	levels := repository.NewInMemoryLevelRepository()
+	games := repository.NewInMemoryGameRepository()
+	authService := auth.NewService(users, testSecret)
+	gameService := service.NewGameService(games, levels, users)
+	h, err := NewHandler(authService, users, Config{
+		Levels:    levels,
+		Games:     gameService,
 		JWTSecret: testSecret,
 		Now: func() time.Time {
 			return time.Date(2026, time.October, 5, 12, 0, 0, 0, time.UTC)
@@ -82,7 +88,7 @@ func TestHandler_JSONAuthPayloads(t *testing.T) {
 	register.Header.Set("Content-Type", "application/json")
 	registerResponse := httptest.NewRecorder()
 	h.ServeHTTP(registerResponse, register)
-	if registerResponse.Code != http.StatusSeeOther || registerResponse.Header().Get("Location") != "/welcome" {
+	if registerResponse.Code != http.StatusSeeOther || registerResponse.Header().Get("Location") != "/game" {
 		t.Fatalf("JSON registration response = %d %q", registerResponse.Code, registerResponse.Header().Get("Location"))
 	}
 	if len(registerResponse.Result().Cookies()) != 1 {
@@ -93,7 +99,7 @@ func TestHandler_JSONAuthPayloads(t *testing.T) {
 	login.Header.Set("Content-Type", "application/json; charset=utf-8")
 	loginResponse := httptest.NewRecorder()
 	h.ServeHTTP(loginResponse, login)
-	if loginResponse.Code != http.StatusSeeOther || loginResponse.Header().Get("Location") != "/welcome" {
+	if loginResponse.Code != http.StatusSeeOther || loginResponse.Header().Get("Location") != "/game" {
 		t.Fatalf("JSON login response = %d %q", loginResponse.Code, loginResponse.Header().Get("Location"))
 	}
 
@@ -106,7 +112,7 @@ func TestHandler_JSONAuthPayloads(t *testing.T) {
 	}
 }
 
-func TestHandler_RegistrationAndWelcomeEscapeUserName(t *testing.T) {
+func TestHandler_RegistrationAndGameEscapeUserName(t *testing.T) {
 	h := newTestHandler(t)
 	register := httptest.NewRecorder()
 	h.ServeHTTP(register, formRequest(http.MethodPost, "/register", url.Values{
@@ -114,7 +120,7 @@ func TestHandler_RegistrationAndWelcomeEscapeUserName(t *testing.T) {
 		"full_name": {"<b>Ada</b>"},
 		"password":  {"correct-horse-42"},
 	}))
-	if register.Code != http.StatusSeeOther || register.Header().Get("Location") != "/welcome" {
+	if register.Code != http.StatusSeeOther || register.Header().Get("Location") != "/game" {
 		t.Fatalf("registration response = %d %q", register.Code, register.Header().Get("Location"))
 	}
 	cookie := register.Result().Cookies()[0]
@@ -122,19 +128,19 @@ func TestHandler_RegistrationAndWelcomeEscapeUserName(t *testing.T) {
 		t.Fatalf("session cookie has unsafe attributes: %#v", cookie)
 	}
 
-	welcomeRequest := httptest.NewRequest(http.MethodGet, "/welcome", nil)
-	welcomeRequest.AddCookie(cookie)
-	welcome := httptest.NewRecorder()
-	h.ServeHTTP(welcome, welcomeRequest)
-	if welcome.Code != http.StatusOK {
-		t.Fatalf("welcome status = %d, want 200", welcome.Code)
+	gameRequest := httptest.NewRequest(http.MethodGet, "/game", nil)
+	gameRequest.AddCookie(cookie)
+	game := httptest.NewRecorder()
+	h.ServeHTTP(game, gameRequest)
+	if game.Code != http.StatusOK {
+		t.Fatalf("game status = %d, want 200", game.Code)
 	}
-	body := welcome.Body.String()
-	if !strings.Contains(body, "Greetings, &lt;b&gt;Ada&lt;/b&gt;!") {
-		t.Fatalf("welcome did not escape the user name: %s", body)
+	body := game.Body.String()
+	if strings.Contains(body, "<b>Ada</b>") {
+		t.Fatalf("game page rendered the user name as HTML: %s", body)
 	}
 	if strings.Contains(body, "correct-horse-42") || strings.Contains(body, cookie.Value) {
-		t.Fatal("welcome page exposed a password or JWT")
+		t.Fatal("game page exposed a password or JWT")
 	}
 }
 
@@ -165,7 +171,7 @@ func TestHandler_HTMXValidationAndRedirects(t *testing.T) {
 	register.Header.Set("HX-Request", "true")
 	response := httptest.NewRecorder()
 	h.ServeHTTP(response, register)
-	if response.Code < 200 || response.Code >= 300 || response.Header().Get("HX-Redirect") != "/welcome" {
+	if response.Code < 200 || response.Code >= 300 || response.Header().Get("HX-Redirect") != "/game" {
 		t.Fatalf("HTMX registration redirect = %d %q", response.Code, response.Header().Get("HX-Redirect"))
 	}
 }

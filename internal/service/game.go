@@ -17,9 +17,13 @@ const shuffleMoves = 1000
 
 var shuffleSeed atomic.Int64
 
+const DefaultMoveLimit = model.DefaultMoveLimit
+
 var (
 	// ErrGameFinished indicates that no moves can be made after winning.
 	ErrGameFinished = errors.New("game is already won")
+	// ErrGameOver indicates that no moves can be made after reaching the move limit.
+	ErrGameOver = errors.New("game is over")
 	// ErrInvalidMove indicates a coordinate that is outside the board or not next to the empty cell.
 	ErrInvalidMove = errors.New("invalid move")
 )
@@ -45,6 +49,7 @@ type GameService struct {
 	games  repository.GameRepository
 	levels repository.LevelRepository
 	users  repository.UserRepository
+	clock  func() time.Time
 	moveMu sync.Mutex
 }
 
@@ -54,7 +59,12 @@ func NewGameService(
 	levelRepository repository.LevelRepository,
 	userRepository repository.UserRepository,
 ) *GameService {
-	return &GameService{games: gameRepository, levels: levelRepository, users: userRepository}
+	return &GameService{
+		games:  gameRepository,
+		levels: levelRepository,
+		users:  userRepository,
+		clock:  func() time.Time { return time.Now().UTC() },
+	}
 }
 
 // Create creates a solvable game for a user and level. The initial position is
@@ -75,12 +85,15 @@ func (s *GameService) Create(ctx context.Context, userID, levelID uint64) (model
 	if err != nil {
 		return model.Game{}, err
 	}
+	now := s.clock().UTC()
 	game := model.Game{
-		LevelID: levelID,
-		UserID:  userID,
-		Init:    board,
-		Moves:   []model.Move{},
-		Board:   append([]int(nil), board...),
+		LevelID:        levelID,
+		UserID:         userID,
+		Init:           board,
+		Moves:          []model.Move{},
+		StartedAt:      now,
+		LastAccessedAt: now,
+		Board:          append([]int(nil), board...),
 	}
 	return s.games.Create(ctx, game)
 }
@@ -100,17 +113,65 @@ func (s *GameService) List(ctx context.Context) ([]model.Game, error) {
 	if err != nil {
 		return nil, err
 	}
-	for i := range games {
-		games[i], err = s.withBoard(ctx, games[i])
-		if err != nil {
-			return nil, err
+	return s.withBoards(ctx, games)
+}
+
+// ListForUser returns only games owned by userID in game-page order.
+func (s *GameService) ListForUser(ctx context.Context, userID uint64) ([]model.Game, error) {
+	var (
+		games []model.Game
+		err   error
+	)
+	if scoped, ok := s.games.(interface {
+		ListByUser(context.Context, uint64) ([]model.Game, error)
+	}); ok {
+		games, err = scoped.ListByUser(ctx, userID)
+	} else {
+		games, err = s.games.List(ctx)
+		if err == nil {
+			owned := games[:0]
+			for _, game := range games {
+				if game.UserID == userID {
+					owned = append(owned, game)
+				}
+			}
+			games = owned
 		}
 	}
-	return games, nil
+	if err != nil {
+		return nil, err
+	}
+	return s.withBoards(ctx, games)
+}
+
+// GetForUser returns and records access to a game owned by userID.
+func (s *GameService) GetForUser(ctx context.Context, userID, id uint64) (model.Game, error) {
+	game, err := s.games.Get(ctx, id)
+	if err != nil {
+		return model.Game{}, err
+	}
+	if game.UserID != userID {
+		return model.Game{}, repository.ErrNotFound
+	}
+	game.LastAccessedAt = s.clock().UTC()
+	game, err = s.games.Update(ctx, game)
+	if err != nil {
+		return model.Game{}, err
+	}
+	return s.withBoard(ctx, game)
 }
 
 // Move applies one zero-based coordinate move to a game.
 func (s *GameService) Move(ctx context.Context, id uint64, move model.Move) (model.Game, error) {
+	return s.moveForUser(ctx, 0, id, move)
+}
+
+// MoveForUser applies a move only when the game belongs to userID.
+func (s *GameService) MoveForUser(ctx context.Context, userID, id uint64, move model.Move) (model.Game, error) {
+	return s.moveForUser(ctx, userID, id, move)
+}
+
+func (s *GameService) moveForUser(ctx context.Context, userID, id uint64, move model.Move) (model.Game, error) {
 	if err := contextError(ctx); err != nil {
 		return model.Game{}, err
 	}
@@ -121,12 +182,28 @@ func (s *GameService) Move(ctx context.Context, id uint64, move model.Move) (mod
 	if err != nil {
 		return model.Game{}, err
 	}
+	if userID != 0 && game.UserID != userID {
+		return model.Game{}, repository.ErrNotFound
+	}
 	if game.IsWin {
 		return model.Game{}, ErrGameFinished
+	}
+	if game.IsOver {
+		return model.Game{}, ErrGameOver
 	}
 	level, err := s.levels.Get(ctx, game.LevelID)
 	if err != nil {
 		return model.Game{}, err
+	}
+	limit := EffectiveMoveLimit(level)
+	if len(game.Moves) >= limit {
+		game.IsOver = true
+		game.CompletedAt = timePointer(s.clock().UTC())
+		game.LastAccessedAt = s.clock().UTC()
+		if _, updateErr := s.games.Update(ctx, game); updateErr != nil {
+			return model.Game{}, updateErr
+		}
+		return model.Game{}, ErrGameOver
 	}
 	board, err := boardAfterMoves(game.Init, game.Moves, level.Rows, level.Columns)
 	if err != nil {
@@ -137,8 +214,37 @@ func (s *GameService) Move(ctx context.Context, id uint64, move model.Move) (mod
 	}
 	game.Moves = append(game.Moves, move)
 	game.IsWin = solved(board)
+	if game.IsWin || len(game.Moves) >= limit {
+		game.CompletedAt = timePointer(s.clock().UTC())
+		game.IsOver = !game.IsWin
+	}
+	game.LastAccessedAt = s.clock().UTC()
 	game.Board = board
 	return s.games.Update(ctx, game)
+}
+
+func (s *GameService) withBoards(ctx context.Context, games []model.Game) ([]model.Game, error) {
+	for i := range games {
+		var err error
+		games[i], err = s.withBoard(ctx, games[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return games, nil
+}
+
+// EffectiveMoveLimit returns the finite move limit used by games.
+// A missing or -1 level limit uses the application default.
+func EffectiveMoveLimit(level model.Level) int {
+	if level.MoveLimit != nil && *level.MoveLimit >= 0 {
+		return *level.MoveLimit
+	}
+	return DefaultMoveLimit
+}
+
+func timePointer(value time.Time) *time.Time {
+	return &value
 }
 
 func (s *GameService) withBoard(ctx context.Context, game model.Game) (model.Game, error) {
@@ -285,6 +391,11 @@ func IsConflict(err error) bool {
 // IsInvalidMove reports whether err describes an illegal puzzle move.
 func IsInvalidMove(err error) bool {
 	return errors.Is(err, ErrInvalidMove)
+}
+
+// IsGameOver reports whether err indicates that a game cannot accept moves.
+func IsGameOver(err error) bool {
+	return errors.Is(err, ErrGameOver)
 }
 
 func abs(value int) int {

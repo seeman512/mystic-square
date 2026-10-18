@@ -60,6 +60,10 @@ jobs:
           test -f migrations/000002_create_users_and_games.down.sql
           test -f migrations/000003_add_auth_fields.up.sql
           test -f migrations/000003_add_auth_fields.down.sql
+          test -f migrations/000005_add_game_tracking.up.sql
+          test -f migrations/000005_add_game_tracking.down.sql
+          test -f web/templates/game.html
+          ! test -f web/templates/welcome.html
           grep -qxF 'module mystic-square' go.mod
           grep -q 'gorm.io/gorm' go.mod
           grep -q 'gorm.io/driver/postgres' go.mod

@@ -1,0 +1,49 @@
+.game-side-panel {
+    min-height: 16rem;
+}
+
+.game-panel-scroll {
+    max-height: 65vh;
+    overflow-y: auto;
+}
+
+.game-board {
+    min-width: 18rem;
+}
+
+.game-cell {
+    height: 4.5rem;
+    min-width: 4.5rem;
+    padding: 0.25rem;
+}
+
+.game-cell form {
+    margin: 0;
+}
+
+.game-tile,
+.game-tile-static {
+    align-items: center;
+    display: inline-flex;
+    font-size: 1.35rem;
+    font-weight: 600;
+    height: 3.75rem;
+    justify-content: center;
+    min-width: 3.75rem;
+}
+
+.game-cell-empty {
+    background: var(--bs-light);
+    box-shadow: inset 0 0 0 2px var(--bs-border-color);
+}
+
+.game-empty {
+    display: block;
+    height: 3.75rem;
+}
+
+@media (max-width: 1199.98px) {
+    .game-panel-scroll {
+        max-height: 28rem;
+    }
+}

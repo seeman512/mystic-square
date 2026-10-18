@@ -44,6 +44,9 @@ func (r *GORMGameRepository) Create(ctx context.Context, game model.Game) (model
 		return model.Game{}, ErrConflict
 	}
 	if err := r.db.WithContext(repositoryContext(ctx)).Create(&game).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return model.Game{}, ErrConflict
+		}
 		return model.Game{}, fmt.Errorf("create game: %w", err)
 	}
 	return game, nil
@@ -82,13 +85,32 @@ func (r *GORMGameRepository) List(ctx context.Context) ([]model.Game, error) {
 	return games, nil
 }
 
+// ListByUser returns only games owned by userID, ordered for the game page.
+func (r *GORMGameRepository) ListByUser(ctx context.Context, userID uint64) ([]model.Game, error) {
+	if err := r.checkDB(); err != nil {
+		return nil, err
+	}
+	var games []model.Game
+	query := r.db.WithContext(repositoryContext(ctx)).Where("user_id = ?", userID).
+		Preload("Level").Preload("User").
+		Order("CASE WHEN is_win OR is_over THEN 1 ELSE 0 END ASC").
+		Order("last_accessed_at DESC").Order("id DESC")
+	if err := query.Find(&games).Error; err != nil {
+		return nil, fmt.Errorf("list games for user %d: %w", userID, err)
+	}
+	if games == nil {
+		games = []model.Game{}
+	}
+	return games, nil
+}
+
 // Update persists a game without changing its ID or ownership.
 func (r *GORMGameRepository) Update(ctx context.Context, game model.Game) (model.Game, error) {
 	if err := r.checkDB(); err != nil {
 		return model.Game{}, err
 	}
 	result := r.db.WithContext(repositoryContext(ctx)).Model(&model.Game{}).Where("id = ?", game.ID).
-		Select("level_id", "user_id", "init", "moves", "is_win").
+		Select("level_id", "user_id", "init", "moves", "is_win", "is_over", "started_at", "last_accessed_at", "completed_at").
 		Updates(&game)
 	if result.Error != nil {
 		return model.Game{}, fmt.Errorf("update game %d: %w", game.ID, result.Error)

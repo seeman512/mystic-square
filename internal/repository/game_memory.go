@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"sort"
 	"sync"
 
 	"mystic-square/internal/model"
@@ -77,6 +78,34 @@ func (r *InMemoryGameRepository) List(ctx context.Context) ([]model.Game, error)
 	return games, nil
 }
 
+// ListByUser returns only games owned by userID in game-page order.
+func (r *InMemoryGameRepository) ListByUser(ctx context.Context, userID uint64) ([]model.Game, error) {
+	if err := contextError(ctx); err != nil {
+		return nil, err
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	games := make([]model.Game, 0)
+	for _, game := range r.items {
+		if game.UserID == userID {
+			games = append(games, cloneGame(game))
+		}
+	}
+	sort.SliceStable(games, func(i, j int) bool {
+		iTerminal := games[i].IsWin || games[i].IsOver
+		jTerminal := games[j].IsWin || games[j].IsOver
+		if iTerminal != jTerminal {
+			return !iTerminal
+		}
+		if !games[i].LastAccessedAt.Equal(games[j].LastAccessedAt) {
+			return games[i].LastAccessedAt.After(games[j].LastAccessedAt)
+		}
+		return games[i].ID > games[j].ID
+	})
+	return games, nil
+}
+
 // Update replaces the mutable state of a game without changing its ID.
 func (r *InMemoryGameRepository) Update(ctx context.Context, game model.Game) (model.Game, error) {
 	if err := contextError(ctx); err != nil {
@@ -116,6 +145,10 @@ func cloneGame(game model.Game) model.Game {
 	}
 	if game.Board != nil {
 		game.Board = append(make([]int, 0, len(game.Board)), game.Board...)
+	}
+	if game.CompletedAt != nil {
+		completedAt := *game.CompletedAt
+		game.CompletedAt = &completedAt
 	}
 	return game
 }

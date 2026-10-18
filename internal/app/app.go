@@ -70,6 +70,8 @@ func NewRouterWithRepositories(
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	webHandler, err := web.NewHandler(authService, userRepository, web.Config{
 		JWTSecret:    jwtSecret,
+		Levels:       levelService,
+		Games:        gameService,
 		SecureCookie: webCookieSecure(),
 		Logger:       logger,
 	})
@@ -111,7 +113,10 @@ func NewRouterWithRepositories(
 	router.POST("/login", gin.WrapH(webHandler))
 	router.GET("/register", gin.WrapH(webHandler))
 	router.POST("/register", gin.WrapH(webHandler))
-	router.GET("/welcome", gin.WrapH(webHandler))
+	router.GET("/game", gin.WrapH(webHandler))
+	router.POST("/game/start", gin.WrapH(webHandler))
+	router.GET("/game/:id/move", gin.WrapH(webHandler))
+	router.POST("/game/:id/move", gin.WrapH(webHandler))
 	router.GET("/logout", gin.WrapH(webHandler))
 	router.POST("/logout", gin.WrapH(webHandler))
 	router.GET("/static/*path", gin.WrapH(webHandler))
