@@ -1,6 +1,6 @@
 {{define "content"}}
 <section id="game-layout" class="container-fluid py-4">
-    <div class="row g-4 align-items-start">
+    <div class="game-panels">
         {{template "levels-panel" .}}
         {{template "game-panel" .}}
         {{template "games-panel" .}}
@@ -9,7 +9,7 @@
 {{end}}
 
 {{define "levels-panel"}}
-<section id="levels-panel" class="col-12 col-xl-3" aria-labelledby="levels-heading">
+<section id="levels-panel" aria-labelledby="levels-heading">
     <div class="card shadow-sm game-side-panel">
         <div class="card-body">
             <h2 id="levels-heading" class="h4">Levels</h2>
@@ -41,7 +41,7 @@
 {{end}}
 
 {{define "game-panel"}}
-<section id="game-panel" class="col-12 col-xl-6" aria-labelledby="current-game-heading">
+<section id="game-panel" aria-labelledby="current-game-heading">
     <div class="card shadow-sm">
         <div class="card-body p-3 p-md-4">
             {{if .GameError}}
@@ -106,7 +106,7 @@
 {{end}}
 
 {{define "games-panel"}}
-<section id="games-panel" class="col-12 col-xl-3" aria-labelledby="my-games-heading">
+<section id="games-panel" aria-labelledby="my-games-heading">
     {{template "games-panel-content" .}}
 </section>
 {{end}}
@@ -145,7 +145,7 @@
 
 {{define "game-response"}}
 {{template "game-panel" .}}
-<section id="games-panel" hx-swap-oob="outerHTML" class="col-12 col-xl-3" aria-labelledby="my-games-heading">
+<section id="games-panel" hx-swap-oob="outerHTML" aria-labelledby="my-games-heading">
     {{template "games-panel-content" .}}
 </section>
 {{end}}

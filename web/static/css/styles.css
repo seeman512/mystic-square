@@ -1,3 +1,17 @@
+/* Keep the side panels at roughly 30% each and give the current game the
+   remaining center space on wide screens. */
+.game-panels {
+    align-items: start;
+    display: grid;
+    gap: 1.5rem;
+}
+
+@media (min-width: 1200px) {
+    .game-panels {
+        grid-template-columns: minmax(0, 3fr) minmax(0, 4fr) minmax(0, 3fr);
+    }
+}
+
 .game-side-panel {
     min-height: 16rem;
 }
