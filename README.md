@@ -1,8 +1,10 @@
 # Mystic Square — Levels Project
 
-Mystic Square is a browser-based sliding-puzzle game built around the classic 15 puzzle. This repository contains a REST API for level configurations, user registration and login, and game sessions. Authentication uses bcrypt password hashes and expiring HS256 JWTs; level mutations and user administration are restricted to admins. It also contains the PostgreSQL persistence layer: GORM mappings and migrations for levels, users, and game sessions.
+Mystic Square is a browser-based sliding-puzzle game built around the classic 15 puzzle. The project provides a REST API for level configurations, authentication, users, and game sessions, plus an embedded server-rendered web UI for playing games and administering levels and user roles.
 
-The HTTP API exposes public level browsing and authentication, admin-only level management and user administration, and authenticated game sessions. New registrations always receive the `user` role; an admin account must be provisioned out-of-band by a trusted operator.
+API authentication uses bcrypt password hashes and expiring HS256 JWTs. Browser authentication uses a separate HttpOnly session cookie. Level mutations and user administration are restricted to admins. PostgreSQL persistence is provided through GORM mappings and golang-migrate migrations; isolated in-memory repositories are used when no database URL is configured.
+
+The HTTP API exposes public level browsing and authentication, admin-only level management and user administration, and authenticated game sessions. The web UI exposes login, registration, logout, the authenticated game page, and admin pages at `/levels` and `/users`. New registrations always receive the `user` role; an admin account must be provisioned or promoted out-of-band by a trusted operator.
 
 ## Security design
 
@@ -10,7 +12,7 @@ The HTTP API exposes public level browsing and authentication, admin-only level 
 
 | Role | Permissions |
 |---|---|
-| `admin` | Browse and play levels; create, update, and delete levels; list users; and change a user's role. |
+| `admin` | Browse and play levels; create, update, and delete levels through the API; use the web admin pages; list users; and change a user's role. |
 | `user` | Browse and play levels and access only games owned by that account. |
 
 Registration always creates the `user` role. Clients cannot choose roles, IDs, password hashes, or system timestamps. Admin accounts must be provisioned or promoted out-of-band by a trusted operator; there is no public admin-registration path.
@@ -63,10 +65,10 @@ The product defines two roles:
 
 | Role | Intended permissions |
 |---|---|
-| `admin` | Browse and play levels; create/update/delete levels; list users and update roles. |
+| `admin` | Browse and play levels; create/update/delete levels through the API; use web admin pages; list users and update roles. |
 | `user` | Browse and play levels; cannot create levels. |
 
-The server enforces these permissions at the HTTP boundary. A `user` can play games but cannot create or modify levels. The authenticated browser UI is served at `/game` and uses the same game services with an HttpOnly session cookie.
+The server enforces these permissions at the HTTP boundary. A `user` can play games but cannot create or modify levels. The authenticated browser UI is served at `/game` and uses the same game services with an HttpOnly session cookie. Administrators receive additional `/levels` and `/users` navigation links; regular users do not.
 
 ### Puzzle rules and player flow
 
@@ -78,7 +80,7 @@ The server enforces these permissions at the HTTP boundary. A `user` can play ga
 
 ### Creating a level
 
-An authenticated admin enters the level's required details and optional description and move limit. The application validates the input, assigns system-managed identifiers and timestamps, and makes the level available to play. Regular users may browse and play levels but cannot create, update, or delete them.
+An authenticated admin can create a level through either the API or the browser `/levels` page. The application validates the input, assigns system-managed identifiers and timestamps, and makes the level available to play. The browser page allows existing levels to edit only `title` and `description`; the API retains its full level replacement and deletion operations. Regular users may browse and play levels but cannot create, update, or delete them.
 
 ## 2. Level resource and fields
 
@@ -89,7 +91,7 @@ The `levels` variant is defined by `internal/app/variants_test.go`. Its four req
 | `title` | string | Required | Name shown in the level list and game. |
 | `theme` | string | Required | Setting or theme, such as a forest or space station. |
 | `objective` | string | Required | What the player must accomplish. |
-| `difficulty` | string | Required | Difficulty label; this is also the list-filter field. The project defines `low`, `medium`, or `hard` as its difficulty values. Release 1 currently checks that this field is not blank but does not enforce the enum. |
+| `difficulty` | string | Required | Difficulty label; this is also the list-filter field. The project defines `low`, `medium`, or `hard` as its difficulty values. The JSON API currently validates that the field is non-blank; the browser admin form accepts the three defined values. |
 | `move_limit` | integer | Optional | Maximum permitted moves; omitted or `-1` uses the default maximum of `10000`. |
 | `description` | string | Optional | Additional details or instructions. |
 
@@ -104,7 +106,7 @@ The puzzle domain also has these configuration and system-managed fields:
 | `time_limit` | integer | Optional; omitted means unlimited | Allowed play time in seconds; `-1` means unlimited. Values from `-1` through `3600` are accepted. |
 | `id` | integer | Assigned by the service | Positive, monotonically increasing resource identifier. IDs are not reused after deletion. |
 | `created_at` | timestamp | Assigned by the service | Creation time in RFC 3339 format. |
-| `updated_at` | timestamp | Assigned by the service | Creation time, refreshed when the resource is updated. |
+| `updated_at` | timestamp | Assigned by the service | Last update time, refreshed when the resource is updated. |
 
 `move_limit` may be from `-1` through `10000`; `0` is a configured limit, while an omitted value or `-1` uses the default maximum of `10000` for game sessions. `time_limit` continues to use the unlimited convention. An omitted move limit is represented as `null` in the resource.
 
@@ -131,7 +133,7 @@ The board dimensions and `time_limit` are additional level settings; the variant
 
 ## 3. How to run and test
 
-Use Go 1.27.1. Without `DATABASE_URL`, the API uses isolated in-memory repositories, which are useful for local development and HTTP tests. Set a strong, unique JWT signing secret (at least 32 bytes) before starting the HTTP API from the repository root:
+Use Go 1.27.1. Without `DATABASE_URL`, the application uses isolated in-memory repositories, which are useful for local development and HTTP tests. Set a strong, unique JWT signing secret (at least 32 bytes) before starting the application from the repository root:
 
 ```bash
 export JWT_SECRET="replace-with-a-random-secret-of-at-least-32-bytes"
@@ -170,7 +172,7 @@ migrate -database "${DATABASE_URL:-postgres://$PG_USER:$PG_PASSWORD@$PG_HOST:$PG
 go run ./cmd/api
 ```
 
-The database connection uses a bounded connection pool and GORM warning-level logging with parameterized query output so credential hashes are not interpolated into SQL logs. `.env` is not loaded automatically by Go; export it with `set -a; source .env; set +a` before starting the API. Apply all migrations, including `000003_add_auth_fields`, the default-level seed, and game tracking fields, before starting the API. `POST /api/v1/auth/register` creates a regular user; `GET /api/v1/users` lists users only for admins. New admin accounts must be created or promoted by a trusted operator after reviewing the required database operation. One bootstrap procedure is to register the account normally, run `UPDATE users SET role = 'admin' WHERE email = 'admin@example.com';` through a trusted database session, then log in again to obtain a JWT carrying the new role.
+The database connection uses a bounded connection pool and GORM warning-level logging with parameterized query output so credential hashes are not interpolated into SQL logs. `.env` is not loaded automatically by Go; export it with `set -a; source .env; set +a` before starting the API. Apply all migrations, including `000003_add_auth_fields`, the default-level seed, and game tracking fields, before starting the API. `POST /api/v1/auth/register` creates a regular user; `GET /api/v1/users` lists users only for admins. New admin accounts must be created or promoted by a trusted operator after reviewing the required database operation. One bootstrap procedure is to register the account normally, run `UPDATE users SET role = 'admin' WHERE email = 'admin@example.com';` through a trusted database session, then log in again to obtain an API JWT carrying the new role. Browser authorization reads the current database role on each request.
 
 Run a single API test stage:
 
@@ -287,6 +289,60 @@ List query parameters:
 - Results are ordered by ascending ID. An empty collection is `[]`, not `null`.
 - `difficulty` filters by exact, case-sensitive match. An empty filter value means no filter. Filtering is applied before pagination.
 
+### Browser web UI
+
+The browser UI is mounted alongside the JSON API by `internal/app/app.go`. It
+uses the existing services directly; it does not make loopback HTTP requests to
+`/api/v1`. Templates and local Bootstrap/HTMX assets are embedded in the
+application binary.
+
+| Method | Route | Access | Behavior |
+|---|---|---|---|
+| `GET` | `/` | public | Redirects guests to `/login` and authenticated users to `/game`. |
+| `GET`, `POST` | `/login` | public | Render/login with a browser session cookie. |
+| `GET`, `POST` | `/register` | public | Register a normal `user` and start a browser session. |
+| `GET` | `/game` | authenticated | Render the three-panel game page. An optional `game_id` selects a user's game. |
+| `POST` | `/game/start` | authenticated | Start or load a game for the session user. |
+| `POST` | `/game/{id}/move` | authenticated | Apply one validated move to an owned game. |
+| `GET` | `/levels` | admin | List levels and show the create form. |
+| `POST` | `/levels` | admin | Create a level from the admin form. |
+| `POST` | `/levels/{id}` | admin | Update only an existing level's title and description. |
+| `GET` | `/users` | admin | List users without credential data. |
+| `POST` | `/users/{id}/role` | admin | Change a user's role to `admin` or `user`. |
+| `GET`, `POST` | `/logout` | public | Render the farewell page or expire the browser session. |
+| `GET` | `/static/*path` | public | Serve embedded CSS and JavaScript assets. |
+
+The root route uses a normal `303 See Other` redirect for browser requests. For
+HTMX requests it returns `HX-Redirect` with a successful response. The same
+`Vary: HX-Request` behavior is used wherever a route can return a complete page
+or an HTMX fragment.
+
+Browser authentication is separate from API Bearer authentication:
+
+- Login and registration set `mystic_square_session` as an HttpOnly cookie with
+  `Path=/`, `SameSite=Lax`, and a 24-hour lifetime.
+- The cookie contains the signed token but is never rendered in HTML, exposed
+  to JavaScript, or stored in browser storage.
+- `WEB_COOKIE_SECURE=true` enables the `Secure` cookie attribute for HTTPS. The
+  application also enables it when `APP_ENV` is `production` or `prod`.
+- State-changing web forms use the HttpOnly `mystic_square_csrf` cookie and a
+  matching form field or `X-CSRF-Token` header. Missing or invalid CSRF tokens
+  are rejected.
+- Browser sessions load the current user record on each request, so role
+  changes take effect without trusting a stale role claim in the cookie token.
+
+The shared header has separate menus for guests, regular users, and admins.
+Admins see `Game`, `Levels`, `Users`, and `Logout`; regular users see `Game` and
+`Logout`. The admin levels page presents the existing levels in a responsive
+compact table. Only title and description controls are editable for existing
+rows; the create form includes the fields required to define a new level. The
+users page lists names, emails, roles, and creation dates, and provides only the
+role update action.
+
+The UI works with ordinary HTML forms when JavaScript is unavailable. When HTMX
+is available, admin and game actions update server-rendered fragments while the
+server remains authoritative for authorization and state.
+
 Errors use this general shape and do not expose internal details:
 
 ```json
@@ -318,13 +374,14 @@ internal/app/app.go          builds and configures the router
 internal/model/              level, user, and game types and validation
 internal/repository/         in-memory and GORM repositories plus DB setup
 migrations/                  PostgreSQL schema managed by golang-migrate
-internal/service/            level business operations
-internal/handler/            HTTP endpoints and request/response handling
+internal/service/            level, user, and game business operations
+internal/handler/            JSON API endpoints and request/response handling
 internal/auth/               bcrypt authentication and HS256 JWT validation
 internal/middleware/         recovery, request logging, CORS, authentication and RBAC
+web/                         embedded HTML templates, CSS/JS assets, and browser handlers
 ```
 
-The router is exposed as `app.NewRouter() http.Handler`; `app.NewRouterWithRepositories` is used when persistent repositories are configured. The API uses Gin and concurrency-safe in-memory stores by default, with optional GORM/PostgreSQL stores for all resources. Successful resource operations return the resource itself; errors use the JSON error envelope shown above.
+The router is exposed as `app.NewRouter() http.Handler`; `app.NewRouterWithRepositories` is used when persistent repositories are configured. The application uses Gin and concurrency-safe in-memory stores by default, with optional GORM/PostgreSQL stores for all resources. The JSON API returns resources and the JSON error envelope shown above; the browser UI renders HTML through the separate `web.Handler` and session-cookie flow.
 
 ## 6. Development scope
 
@@ -336,11 +393,14 @@ Release 1 provides:
 - Public registration with bcrypt password hashing and login with signed 24-hour JWTs.
 - Admin-only user listing and role updates; registration cannot set or elevate a role.
 - Solvable game creation, current-board derivation, legal moves, win tracking, and the authenticated three-panel browser game page.
+- Server-rendered login, registration, logout, and root routing pages using embedded Bootstrap and HTMX assets.
+- Admin-only browser pages at `/levels` and `/users`, including level creation, title/description-only level edits, role updates, CSRF protection, responsive level tables, and separate admin/user navigation menus.
+- HttpOnly browser sessions separate from API Bearer tokens, with current-role checks on protected web requests.
 - Recovery, request logging, CORS, and isolation between router instances.
 - PostgreSQL migrations and GORM models/repositories for `Level`, `User`, and `Game`.
 - Database constraints for supported user roles and one game per user/level.
 
-Authentication and authorization middleware protect all game operations and admin-only mutations. The model layer exposes the admin rule (`User.CanManageLevels`), while JWT claims propagate the authenticated identity to handlers. Game creation starts from solved order and performs 1,000 legal random adjacent moves, preserving solvability. Move coordinates are zero-based (`row`, `column`); for example, on a 3×3 board `row: 2, column: 1` selects tile 8 when the empty cell is to its right.
+Authentication and authorization middleware protect all API game operations and admin-only mutations. The model layer exposes the admin rule (`User.CanManageLevels`), while JWT claims propagate the authenticated identity to API handlers. The web layer validates its session cookie separately and obtains the current role from the user repository. Game creation starts from solved order and performs 1,000 legal random adjacent moves, preserving solvability. Move coordinates are zero-based (`row`, `column`); for example, on a 3×3 board `row: 2, column: 1` selects tile 8 when the empty cell is to its right.
 
 ## 7. Lesson 8 Report
 
