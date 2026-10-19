@@ -64,8 +64,12 @@ func (h *Handler) renderNamedPage(w http.ResponseWriter, r *http.Request, page, 
 }
 
 func (h *Handler) renderError(w http.ResponseWriter, r *http.Request, title, message string, status int) {
-	w.Header().Add("Vary", "HX-Request")
 	data := h.pageData(title, r, PageData{Error: message})
+	h.renderBasePage(w, r, data, status)
+}
+
+func (h *Handler) renderBasePage(w http.ResponseWriter, r *http.Request, data PageData, status int) {
+	w.Header().Add("Vary", "HX-Request")
 	var body bytes.Buffer
 	if err := h.baseTemplates.ExecuteTemplate(&body, "layout", data); err != nil {
 		h.logger.Error("execute web error template", "error", err)

@@ -72,6 +72,8 @@ func NewRouterWithRepositories(
 		JWTSecret:    jwtSecret,
 		Levels:       levelService,
 		Games:        gameService,
+		AdminLevels:  levelService,
+		AdminUsers:   userService,
 		SecureCookie: webCookieSecure(),
 		Logger:       logger,
 	})
@@ -109,12 +111,18 @@ func NewRouterWithRepositories(
 	// The web UI has its own cookie-based authentication layer. It is mounted
 	// separately from the API so Bearer-token middleware and JSON contracts are
 	// unchanged.
+	router.GET("/", gin.WrapH(webHandler))
 	router.GET("/login", gin.WrapH(webHandler))
 	router.POST("/login", gin.WrapH(webHandler))
 	router.GET("/register", gin.WrapH(webHandler))
 	router.POST("/register", gin.WrapH(webHandler))
 	router.GET("/game", gin.WrapH(webHandler))
 	router.POST("/game/start", gin.WrapH(webHandler))
+	router.GET("/levels", gin.WrapH(webHandler))
+	router.POST("/levels", gin.WrapH(webHandler))
+	router.POST("/levels/:id", gin.WrapH(webHandler))
+	router.GET("/users", gin.WrapH(webHandler))
+	router.POST("/users/:id/role", gin.WrapH(webHandler))
 	router.GET("/game/:id/move", gin.WrapH(webHandler))
 	router.POST("/game/:id/move", gin.WrapH(webHandler))
 	router.GET("/logout", gin.WrapH(webHandler))

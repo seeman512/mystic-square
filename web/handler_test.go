@@ -21,11 +21,14 @@ func newTestHandler(t *testing.T) *Handler {
 	levels := repository.NewInMemoryLevelRepository()
 	games := repository.NewInMemoryGameRepository()
 	authService := auth.NewService(users, testSecret)
+	levelService := service.NewLevelService(levels)
 	gameService := service.NewGameService(games, levels, users)
 	h, err := NewHandler(authService, users, Config{
-		Levels:    levels,
-		Games:     gameService,
-		JWTSecret: testSecret,
+		Levels:      levelService,
+		Games:       gameService,
+		AdminLevels: levelService,
+		AdminUsers:  service.NewUserService(users),
+		JWTSecret:   testSecret,
 		Now: func() time.Time {
 			return time.Date(2026, time.October, 5, 12, 0, 0, 0, time.UTC)
 		},

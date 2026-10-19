@@ -41,6 +41,7 @@ func (h *Handler) gamePageData(r *http.Request, user model.User, selectedID uint
 	}
 	data := h.pageData("Game", r, PageData{
 		Authenticated: true,
+		IsAdmin:       user.Role == model.UserRoleAdmin,
 		FullName:      user.FullName,
 		IsGame:        true,
 		CSRFToken:     csrfTokenFromRequest(r),

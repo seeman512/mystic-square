@@ -27,6 +27,9 @@ type Config struct {
 	// Levels and Games provide the services used by the authenticated game page.
 	Levels LevelLister
 	Games  GamePageService
+	// AdminLevels and AdminUsers provide validated administrator operations.
+	AdminLevels LevelAdminService
+	AdminUsers  UserAdminService
 	// SecureCookie should be true when the application is served over HTTPS.
 	SecureCookie bool
 	// Logger receives template and response-write errors. A nil logger uses
@@ -50,6 +53,8 @@ type Handler struct {
 	mux           *http.ServeMux
 	baseTemplates *template.Template
 	pageTemplates map[string]*template.Template
+	adminLevels   LevelAdminService
+	adminUsers    UserAdminService
 }
 
 // NewHandler creates the embedded-template web handler.
@@ -73,8 +78,8 @@ func NewHandler(service *auth.Service, users repository.UserRepository, config C
 	if err != nil {
 		return nil, fmt.Errorf("parse shared web templates: %w", err)
 	}
-	pages := make(map[string]*template.Template, 4)
-	for _, page := range []string{"login", "register", "game", "logout"} {
+	pages := make(map[string]*template.Template, 6)
+	for _, page := range []string{"login", "register", "game", "logout", "levels", "users"} {
 		pageTemplates, err := base.Clone()
 		if err != nil {
 			return nil, fmt.Errorf("clone templates for %s: %w", page, err)
@@ -86,11 +91,26 @@ func NewHandler(service *auth.Service, users repository.UserRepository, config C
 		pages[page] = pageTemplates
 	}
 
+	adminLevels := config.AdminLevels
+	if adminLevels == nil {
+		if candidate, ok := config.Levels.(LevelAdminService); ok {
+			adminLevels = candidate
+		}
+	}
+	adminUsers := config.AdminUsers
+	if adminUsers == nil {
+		if candidate, ok := users.(UserAdminService); ok {
+			adminUsers = candidate
+		}
+	}
+
 	h := &Handler{
 		service:       service,
 		users:         users,
 		levels:        config.Levels,
 		games:         config.Games,
+		adminLevels:   adminLevels,
+		adminUsers:    adminUsers,
 		jwtSecret:     config.JWTSecret,
 		secureCookie:  config.SecureCookie,
 		logger:        logger,
@@ -104,11 +124,16 @@ func NewHandler(service *auth.Service, users repository.UserRepository, config C
 }
 
 func (h *Handler) registerRoutes() {
+	h.mux.HandleFunc("/", h.root)
 	h.mux.HandleFunc("/login", h.login)
 	h.mux.HandleFunc("/register", h.register)
 	h.mux.HandleFunc("/game", h.game)
 	h.mux.HandleFunc("/game/start", h.gameStart)
 	h.mux.HandleFunc("/game/", h.gameMove)
+	h.mux.HandleFunc("/levels", h.levelsAdmin)
+	h.mux.HandleFunc("/levels/", h.levelEdit)
+	h.mux.HandleFunc("/users", h.usersAdmin)
+	h.mux.HandleFunc("/users/", h.userRole)
 	h.mux.HandleFunc("/logout", h.logout)
 	h.mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(StaticFS))))
 }

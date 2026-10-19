@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"mystic-square/internal/model"
@@ -16,6 +17,12 @@ type LevelService interface {
 	List(ctx context.Context) ([]model.Level, error)
 	Update(ctx context.Context, id uint64, input model.LevelInput) (model.Level, error)
 	Delete(ctx context.Context, id uint64) error
+}
+
+// titleDescriptionUpdater is implemented by repositories that can update the
+// browser-admin fields without replacing the rest of a level.
+type titleDescriptionUpdater interface {
+	UpdateTitleDescription(context.Context, uint64, string, *string, time.Time) (model.Level, error)
 }
 
 // LevelServiceImpl validates level data and coordinates repository operations.
@@ -86,6 +93,36 @@ func (s *LevelServiceImpl) Update(ctx context.Context, id uint64, input model.Le
 	current.TimeLimit = input.TimeLimit
 	current.MoveLimit = input.MoveLimit
 	current.UpdatedAt = s.clock().UTC()
+	return s.repository.Update(ctx, current)
+}
+
+// UpdateTitleDescription changes only the title and description fields used by
+// the browser administration page.
+func (s *LevelServiceImpl) UpdateTitleDescription(ctx context.Context, id uint64, title string, description *string) (model.Level, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return model.Level{}, &model.LevelValidationError{Fields: []model.FieldError{{Field: "title", Message: "must not be blank"}}}
+	}
+	if description != nil {
+		value := strings.TrimSpace(*description)
+		if value == "" {
+			description = nil
+		} else {
+			description = &value
+		}
+	}
+	updatedAt := s.clock().UTC()
+	if updater, ok := s.repository.(titleDescriptionUpdater); ok {
+		return updater.UpdateTitleDescription(ctx, id, title, description, updatedAt)
+	}
+
+	current, err := s.repository.Get(ctx, id)
+	if err != nil {
+		return model.Level{}, err
+	}
+	current.Title = title
+	current.Description = description
+	current.UpdatedAt = updatedAt
 	return s.repository.Update(ctx, current)
 }
 

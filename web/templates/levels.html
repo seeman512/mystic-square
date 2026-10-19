@@ -1,0 +1,152 @@
+{{define "content"}}
+{{template "levels-page" .}}
+{{end}}
+
+{{define "levels-page"}}
+<section id="levels-page" class="container py-4" aria-labelledby="levels-page-heading">
+    <div id="admin-message">
+        {{if .AdminError}}
+        <div class="alert alert-danger" role="alert" aria-live="assertive">{{.AdminError}}</div>
+        {{end}}
+        {{if .AdminNotice}}
+        <div class="alert alert-success" role="status">{{.AdminNotice}}</div>
+        {{end}}
+    </div>
+
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <h1 id="levels-page-heading" class="h2 mb-0">Levels</h1>
+        <a class="btn btn-outline-primary" href="/game">Play a level</a>
+    </div>
+
+    {{template "level-create-form" .}}
+    {{template "levels-list" .}}
+</section>
+{{end}}
+
+{{define "level-create-form"}}
+<section id="level-create-form" class="card shadow-sm mb-4" aria-labelledby="level-create-heading">
+    <div class="card-body p-3">
+        <h2 id="level-create-heading" class="h4 mb-1">Create level</h2>
+        <p class="text-muted small mb-3">Add a new playable level.</p>
+        {{if .LevelForm.Errors}}
+        <div class="alert alert-danger py-2" role="alert">
+            <ul class="mb-0">
+                {{range .LevelForm.Errors}}<li>{{.}}</li>{{end}}
+            </ul>
+        </div>
+        {{end}}
+        <form method="post" action="/levels" hx-post="/levels" hx-target="#levels-page" hx-swap="outerHTML">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <div class="row g-2">
+                <div class="col-12 col-lg-3">
+                    <label class="form-label small mb-1" for="level-create-title">Title</label>
+                    <input id="level-create-title" class="form-control form-control-sm" name="title" type="text" value="{{.LevelForm.Title}}" required>
+                </div>
+                <div class="col-12 col-lg-3">
+                    <label class="form-label small mb-1" for="level-create-theme">Theme</label>
+                    <input id="level-create-theme" class="form-control form-control-sm" name="theme" type="text" value="{{.LevelForm.Theme}}" required>
+                </div>
+                <div class="col-12 col-lg-3">
+                    <label class="form-label small mb-1" for="level-create-objective">Objective</label>
+                    <input id="level-create-objective" class="form-control form-control-sm" name="objective" type="text" value="{{.LevelForm.Objective}}" required>
+                </div>
+                <div class="col-12 col-lg-3">
+                    <label class="form-label small mb-1" for="level-create-difficulty">Difficulty</label>
+                    <select id="level-create-difficulty" class="form-select form-select-sm" name="difficulty" required>
+                        <option value="">Choose difficulty</option>
+                        <option value="low"{{if eq .LevelForm.Difficulty "low"}} selected{{end}}>Low</option>
+                        <option value="medium"{{if eq .LevelForm.Difficulty "medium"}} selected{{end}}>Medium</option>
+                        <option value="hard"{{if eq .LevelForm.Difficulty "hard"}} selected{{end}}>Hard</option>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label class="form-label small mb-1" for="level-create-description">Description</label>
+                    <textarea id="level-create-description" class="form-control form-control-sm" name="description" rows="1">{{.LevelForm.Description}}</textarea>
+                </div>
+                <div class="col-6 col-lg-3">
+                    <label class="form-label small mb-1" for="level-create-rows">Rows</label>
+                    <input id="level-create-rows" class="form-control form-control-sm" name="rows" type="number" min="2" max="100" value="{{.LevelForm.Rows}}" placeholder="4">
+                </div>
+                <div class="col-6 col-lg-3">
+                    <label class="form-label small mb-1" for="level-create-columns">Columns</label>
+                    <input id="level-create-columns" class="form-control form-control-sm" name="columns" type="number" min="2" max="100" value="{{.LevelForm.Columns}}" placeholder="4">
+                </div>
+                <div class="col-6 col-lg-3">
+                    <label class="form-label small mb-1" for="level-create-time-limit">Time limit (seconds)</label>
+                    <input id="level-create-time-limit" class="form-control form-control-sm" name="time_limit" type="number" min="-1" max="3600" value="{{.LevelForm.TimeLimit}}" placeholder="Unlimited">
+                </div>
+                <div class="col-6 col-lg-3">
+                    <label class="form-label small mb-1" for="level-create-move-limit">Move limit</label>
+                    <input id="level-create-move-limit" class="form-control form-control-sm" name="move_limit" type="number" min="-1" max="10000" value="{{.LevelForm.MoveLimit}}" placeholder="Unlimited">
+                </div>
+            </div>
+            <div class="d-flex justify-content-end mt-3">
+                <button type="submit" class="btn btn-primary btn-sm">Create level</button>
+            </div>
+        </form>
+    </div>
+</section>
+{{end}}
+
+{{define "levels-list"}}
+<section id="levels-list" aria-labelledby="existing-levels-heading">
+    <h2 id="existing-levels-heading" class="h4 mb-3">Existing levels</h2>
+    {{if .AdminLevels}}
+    <div class="table-responsive">
+        <table class="table table-sm table-striped table-hover align-middle admin-levels-table">
+            <caption class="visually-hidden">Existing levels and editable title and description fields</caption>
+            <thead>
+                <tr>
+                    <th scope="col">ID</th>
+                    <th scope="col">Title</th>
+                    <th scope="col">Description</th>
+                    <th scope="col">Theme</th>
+                    <th scope="col">Objective</th>
+                    <th scope="col">Difficulty</th>
+                    <th scope="col">Board</th>
+                    <th scope="col">Time limit</th>
+                    <th scope="col">Move limit</th>
+                    <th scope="col">Updated</th>
+                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .AdminLevels}}
+                {{template "level-row" .}}
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    {{else}}
+    <p class="text-muted">No levels are available.</p>
+    {{end}}
+</section>
+{{end}}
+
+{{define "level-row"}}
+<tr id="level-{{.ID}}">
+    <td>{{.ID}}</td>
+    <td>
+        <label class="visually-hidden" for="level-{{.ID}}-title">Title for level {{.ID}}</label>
+        <input id="level-{{.ID}}-title" class="form-control form-control-sm level-title-input" form="level-{{.ID}}-form" name="title" type="text" value="{{.Title}}" required>
+    </td>
+    <td>
+        <label class="visually-hidden" for="level-{{.ID}}-description">Description for level {{.ID}}</label>
+        <textarea id="level-{{.ID}}-description" class="form-control form-control-sm level-description-input" form="level-{{.ID}}-form" name="description" rows="1">{{.Description}}</textarea>
+    </td>
+    <td>{{.Theme}}</td>
+    <td>{{.Objective}}</td>
+    <td>{{.Difficulty}}</td>
+    <td>{{.Rows}} × {{.Columns}}</td>
+    <td>{{.TimeLimit}}</td>
+    <td>{{.MoveLimit}}</td>
+    <td>{{.UpdatedAt}}</td>
+    <td>
+        <form id="level-{{.ID}}-form" method="post" action="/levels/{{.ID}}" hx-post="/levels/{{.ID}}" hx-target="#levels-page" hx-swap="outerHTML">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <button type="submit" class="btn btn-primary btn-sm text-nowrap">Save</button>
+        </form>
+        <a class="btn btn-outline-secondary btn-sm text-nowrap mt-1" href="/game">Play</a>
+    </td>
+</tr>
+{{end}}

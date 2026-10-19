@@ -1,3 +1,22 @@
+/* Keep administrator level rows readable while allowing the table to scroll
+   horizontally on narrow screens. */
+.admin-levels-table {
+    min-width: 72rem;
+}
+
+.admin-levels-table .level-title-input {
+    min-width: 12rem;
+}
+
+.admin-levels-table .level-description-input {
+    min-width: 16rem;
+}
+
+.admin-levels-table td,
+.admin-levels-table th {
+    vertical-align: middle;
+}
+
 /* Keep the side panels at roughly 30% each and give the current game the
    remaining center space on wide screens. */
 .game-panels {

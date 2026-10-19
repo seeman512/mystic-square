@@ -2,15 +2,15 @@
 <header>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary" aria-label="Main navigation">
         <div class="container">
-            {{if .Authenticated}}
-            <a class="navbar-brand fw-semibold" href="/game">Mystic Square</a>
-            {{else}}
-            <a class="navbar-brand fw-semibold" href="/login">Mystic Square</a>
-            {{end}}
-            <div class="navbar-nav ms-auto align-items-lg-center">
+            <a class="navbar-brand fw-semibold" href="/">Mystic Square</a>
+            <div class="navbar-nav ms-auto flex-row flex-wrap align-items-center justify-content-end gap-1">
                 {{if .Authenticated}}
                 <a class="nav-link{{if .IsGame}} active{{end}}" href="/game"{{if .IsGame}} aria-current="page"{{end}}>Game</a>
-                <form method="post" action="/logout" class="d-inline ms-lg-3 mt-2 mt-lg-0">
+                {{if .IsAdmin}}
+                <a class="nav-link{{if .IsLevels}} active{{end}}" href="/levels"{{if .IsLevels}} aria-current="page"{{end}}>Levels</a>
+                <a class="nav-link{{if .IsUsers}} active{{end}}" href="/users"{{if .IsUsers}} aria-current="page"{{end}}>Users</a>
+                {{end}}
+                <form method="post" action="/logout" class="d-inline ms-2 mt-0">
                     <button type="submit" class="btn btn-outline-light btn-sm">Logout</button>
                 </form>
                 {{else}}

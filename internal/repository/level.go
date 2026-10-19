@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"mystic-square/internal/model"
 )
@@ -106,6 +107,26 @@ func (r *InMemoryLevelRepository) Update(ctx context.Context, level model.Level)
 	return cloneLevel(level), nil
 }
 
+// UpdateTitleDescription changes only the editable web-admin fields.
+func (r *InMemoryLevelRepository) UpdateTitleDescription(ctx context.Context, id uint64, title string, description *string, updatedAt time.Time) (model.Level, error) {
+	if err := contextError(ctx); err != nil {
+		return model.Level{}, err
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	level, ok := r.items[id]
+	if !ok {
+		return model.Level{}, ErrNotFound
+	}
+	level.Title = title
+	level.Description = cloneStringPointer(description)
+	level.UpdatedAt = updatedAt
+	r.items[id] = cloneLevel(level)
+	return cloneLevel(level), nil
+}
+
 // Delete removes a level. Identifiers are deliberately not reused.
 func (r *InMemoryLevelRepository) Delete(ctx context.Context, id uint64) error {
 	if err := contextError(ctx); err != nil {
@@ -127,6 +148,14 @@ func contextError(ctx context.Context) error {
 		return nil
 	}
 	return ctx.Err()
+}
+
+func cloneStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	copyValue := *value
+	return &copyValue
 }
 
 func cloneLevel(level model.Level) model.Level {

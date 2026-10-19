@@ -1,0 +1,72 @@
+{{define "content"}}
+{{template "users-page" .}}
+{{end}}
+
+{{define "users-page"}}
+<section id="users-page" class="container py-4" aria-labelledby="users-page-heading">
+    <div id="admin-message">
+        {{if .AdminError}}
+        <div class="alert alert-danger" role="alert" aria-live="assertive">{{.AdminError}}</div>
+        {{end}}
+        {{if .AdminNotice}}
+        <div class="alert alert-success" role="status">{{.AdminNotice}}</div>
+        {{end}}
+    </div>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <h1 id="users-page-heading" class="h2 mb-0">Users</h1>
+        <a class="btn btn-outline-primary" href="/game">Back to game</a>
+    </div>
+    {{template "users-list" .}}
+</section>
+{{end}}
+
+{{define "users-list"}}
+<section id="users-list" aria-labelledby="existing-users-heading">
+    <h2 id="existing-users-heading" class="visually-hidden">Existing users</h2>
+    {{if .AdminUsers}}
+    <div class="table-responsive">
+        <table class="table table-striped align-middle">
+            <caption class="visually-hidden">Registered Mystic Square users and their roles</caption>
+            <thead>
+                <tr>
+                    <th scope="col">ID</th>
+                    <th scope="col">Name</th>
+                    <th scope="col">Email</th>
+                    <th scope="col">Created</th>
+                    <th scope="col">Role</th>
+                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .AdminUsers}}
+                {{template "user-row" .}}
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    {{else}}
+    <p class="text-muted">No users are available.</p>
+    {{end}}
+</section>
+{{end}}
+
+{{define "user-row"}}
+<tr id="user-{{.ID}}">
+    <td>{{.ID}}</td>
+    <td>{{.FullName}}</td>
+    <td>{{.Email}}</td>
+    <td>{{.CreatedAt}}</td>
+    <td>{{.Role}}</td>
+    <td>
+        <form method="post" action="/users/{{.ID}}/role" hx-post="/users/{{.ID}}/role" hx-target="#users-page" hx-swap="outerHTML" class="d-flex gap-2">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <label class="visually-hidden" for="user-{{.ID}}-role">Role for {{.FullName}}</label>
+            <select id="user-{{.ID}}-role" class="form-select form-select-sm" name="role">
+                <option value="user"{{if eq .Role "user"}} selected{{end}}>user</option>
+                <option value="admin"{{if eq .Role "admin"}} selected{{end}}>admin</option>
+            </select>
+            <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        </form>
+    </td>
+</tr>
+{{end}}

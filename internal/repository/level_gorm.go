@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -77,6 +78,30 @@ func (r *GORMLevelRepository) Update(ctx context.Context, level model.Level) (mo
 		return model.Level{}, ErrNotFound
 	}
 	return level, nil
+}
+
+// UpdateTitleDescription changes only the editable web-admin fields.
+func (r *GORMLevelRepository) UpdateTitleDescription(ctx context.Context, id uint64, title string, description *string, updatedAt time.Time) (model.Level, error) {
+	if r == nil || r.db == nil {
+		return model.Level{}, errors.New("level repository database is nil")
+	}
+	var descriptionValue any
+	if description != nil {
+		descriptionValue = *description
+	}
+	result := r.db.WithContext(repositoryContext(ctx)).Model(&model.Level{}).Where("id = ?", id).
+		Updates(map[string]any{
+			"title":       title,
+			"description": descriptionValue,
+			"updated_at":  updatedAt,
+		})
+	if result.Error != nil {
+		return model.Level{}, fmt.Errorf("update level %d title and description: %w", id, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return model.Level{}, ErrNotFound
+	}
+	return r.Get(ctx, id)
 }
 
 // Delete removes a level by ID.
