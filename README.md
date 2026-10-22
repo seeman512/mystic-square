@@ -157,22 +157,52 @@ go test -race ./...
 
 ### PostgreSQL mode
 
-The Lesson 8 database path is selected by setting `DATABASE_URL`, or by exporting the `PG_*` variables shown in `.env.example`. The application deliberately does not call GORM `AutoMigrate`.
+The application deliberately does not call GORM `AutoMigrate`. Schema changes are managed by the versioned SQL files in `migrations/` and applied by the separate `migrate` Compose service.
+
+For the complete local stack, copy `.env.example` to `.env`, set a strong `JWT_SECRET`, and start the services:
 
 ```bash
-# For the local Docker database:
-docker compose up -d postgres
-set -a; source .env.example; set +a
-export JWT_SECRET="replace-with-a-random-secret-of-at-least-32-bytes"
+cp .env.example .env
+# Edit .env and set JWT_SECRET to at least 32 bytes.
+docker compose up --build
+```
 
-# Or provide DATABASE_URL directly for an existing PostgreSQL server:
-# export DATABASE_URL='postgres://user:password@localhost:5432/database?sslmode=disable'
+Compose starts PostgreSQL with a persistent named volume, waits for its healthcheck, applies pending migrations, and then starts the API. To run it in the background:
 
+```bash
+docker compose up -d --build
+docker compose logs -f migrate app
+```
+
+The database volume is preserved by a normal shutdown:
+
+```bash
+docker compose down
+```
+
+To intentionally delete the local database and rebuild it from all migrations:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+Do not use `down -v` or migration `down` commands for production data. Production deployments should apply forward migrations only. The migration service can also be run explicitly before an application rollout:
+
+```bash
+docker compose run --rm migrate
+docker compose up -d app
+```
+
+When running the API directly outside Docker, use the `DATABASE_URL` or `PG_*` variables shown in `.env.example` and apply migrations with the locally installed `migrate` CLI before starting the API. `.env` is not loaded automatically by Go:
+
+```bash
+set -a; source .env; set +a
 migrate -database "${DATABASE_URL:-postgres://$PG_USER:$PG_PASSWORD@$PG_HOST:$PG_PORT/$PG_DB?sslmode=disable}" -path migrations up
 go run ./cmd/api
 ```
 
-The database connection uses a bounded connection pool and GORM warning-level logging with parameterized query output so credential hashes are not interpolated into SQL logs. `.env` is not loaded automatically by Go; export it with `set -a; source .env; set +a` before starting the API. Apply all migrations, including `000003_add_auth_fields`, the default-level seed, and game tracking fields, before starting the API. `POST /api/v1/auth/register` creates a regular user; `GET /api/v1/users` lists users only for admins. New admin accounts must be created or promoted by a trusted operator after reviewing the required database operation. One bootstrap procedure is to register the account normally, run `UPDATE users SET role = 'admin' WHERE email = 'admin@example.com';` through a trusted database session, then log in again to obtain an API JWT carrying the new role. Browser authorization reads the current database role on each request.
+The database connection uses a bounded connection pool and GORM warning-level logging with parameterized query output so credential hashes are not interpolated into SQL logs. `POST /api/v1/auth/register` creates a regular user; `GET /api/v1/users` lists users only for admins. New admin accounts must be created or promoted by a trusted operator after reviewing the required database operation. One bootstrap procedure is to register the account normally, run `UPDATE users SET role = 'admin' WHERE email = 'admin@example.com';` through a trusted database session, then log in again to obtain an API JWT carrying the new role. Browser authorization reads the current database role on each request.
 
 Run a single API test stage:
 
