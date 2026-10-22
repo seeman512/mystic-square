@@ -1,0 +1,13 @@
+.git
+.env
+.env.*
+!.env.example
+.gitignore
+.agents
+.claude
+bin
+tmp
+*.test
+*.out
+*.prof
+coverage.html
